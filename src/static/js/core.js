@@ -190,12 +190,25 @@ function setupEventListeners() {
         const textFontSize = document.getElementById('text-font-size');
         const textAlignment = document.getElementById('text-alignment');
         
+        // Vertical alignment is deliberately NOT part of the guard below: it is
+        // additive, and requiring it would disable every text preview for a
+        // browser holding an older cached index.html.
+        const textVerticalAlignment = document.getElementById('text-vertical-alignment');
+
         if (textInput && textFontSize && textAlignment) {
             [textInput, textFontSize, textAlignment].forEach(el => {
                 el.addEventListener('input', updateTextPreview);
                 // Also push a debounced server-rendered (true-to-print) preview.
                 el.addEventListener('input', () => requestServerPreview('text'));
             });
+
+            // Vertical alignment only changes the server render (the CSS preview
+            // has no fixed-height label to align within), so it just needs to
+            // re-request the true-to-print preview.
+            if (textVerticalAlignment) {
+                textVerticalAlignment.addEventListener('change',
+                    () => requestServerPreview('text'));
+            }
         }
     }
     
@@ -387,11 +400,51 @@ function setupEventListeners() {
         });
     });
 
+    // Vertical alignment only has an effect on die-cut labels, so reflect the
+    // selected roll rather than leaving a control that silently does nothing.
+    const labelSizeEl = document.getElementById('label-size');
+    if (labelSizeEl) {
+        labelSizeEl.addEventListener('change', updateVerticalAlignAvailability);
+        updateVerticalAlignAvailability();
+    }
+
     // ---- Print queue wiring (polling + actions) ----
     setupQueue();
 
     // ---- Console layout wiring (sidebar drawer + preview relocation) ----
     setupConsoleLayout();
+}
+
+/**
+ * Enable the vertical alignment control only for die-cut labels, and say why
+ * when it is disabled.
+ *
+ * Vertical alignment needs spare height to distribute. A die-cut label has a
+ * fixed physical height, so there is slack; continuous tape is cut to whatever
+ * the text needs, so there is none and the backend ignores the setting. Rather
+ * than leave a control that silently does nothing, disable it and explain.
+ *
+ * Die-cut is read from the selected option's own text rather than parsed out of
+ * the identifier: the round die-cut rolls are "d12"/"d24"/"d58", so an "is
+ * there an x in it" test would quietly treat them as continuous.
+ */
+function updateVerticalAlignAvailability() {
+    const labelSizeEl = document.getElementById('label-size');
+    const field = document.getElementById('text-valign-field');
+    const select = document.getElementById('text-vertical-alignment');
+    const hint = document.getElementById('text-valign-hint');
+    if (!labelSizeEl || !select) return;
+
+    const option = labelSizeEl.options[labelSizeEl.selectedIndex];
+    const isDieCut = !!option && /die-cut/i.test(option.textContent || '');
+
+    select.disabled = !isDieCut;
+    if (field) field.classList.toggle('is-inactive', !isDieCut);
+    if (hint) {
+        hint.textContent = isDieCut
+            ? 'Where the text sits within the fixed label height'
+            : 'Die-cut labels only \u2014 continuous tape is cut to fit the text';
+    }
 }
 
 // Interval handle for the Queue polling loop; null while not polling.

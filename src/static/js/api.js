@@ -68,6 +68,8 @@ async function loadSettings() {
         document.getElementById('label-size').value = settings.label_size || '62';
         document.getElementById('text-font-size').value = settings.font_size || '50';
         document.getElementById('text-alignment').value = settings.alignment || 'left';
+        const valignEl = document.getElementById('text-vertical-alignment');
+        if (valignEl) valignEl.value = settings.vertical_alignment || 'top';
         document.getElementById('rotate').value = settings.rotate || '0';
         document.getElementById('threshold').value = settings.threshold || '70';
         document.getElementById('dither').value = settings.dither ? 'true' : 'false';
@@ -361,6 +363,7 @@ async function handleTextPrint(event) {
         const text = document.getElementById('text-input').value;
         const fontSize = document.getElementById('text-font-size').value;
         const alignment = document.getElementById('text-alignment').value;
+        const verticalAlignment = readVerticalAlignment();
         
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
@@ -396,6 +399,7 @@ async function handleTextPrint(event) {
                 label_size: labelSize,
                 font_size: parseInt(fontSize),
                 alignment: alignment,
+                vertical_alignment: verticalAlignment,
                 rotate: parseInt(rotate),
                 threshold: parseFloat(threshold),
                 dither: dither,
@@ -1087,6 +1091,7 @@ async function handleSaveSettings(event) {
         const labelSize = document.getElementById('label-size').value;
         const fontSize = document.getElementById('text-font-size').value;
         const alignment = document.getElementById('text-alignment').value;
+        const verticalAlignment = readVerticalAlignment();
         const rotate = document.getElementById('rotate').value;
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
@@ -1128,6 +1133,7 @@ async function handleSaveSettings(event) {
                 label_size: labelSize,
                 font_size: parseInt(fontSize),
                 alignment: alignment,
+                vertical_alignment: verticalAlignment,
                 rotate: parseInt(rotate),
                 threshold: parseFloat(threshold),
                 dither: dither,
@@ -1162,6 +1168,20 @@ async function handleSaveSettings(event) {
         console.error('Error saving settings:', error);
         showNotification(`Error saving settings: ${error.message}`, 'error');
     }
+}
+
+/**
+ * Read the text tab's vertical alignment, falling back to "top" when the
+ * control is absent (older cached index.html) or holds an unexpected value.
+ *
+ * Only affects die-cut labels: continuous tape is cut to the height the text
+ * needs, so there is no spare room to align within and the backend ignores it.
+ * @returns {string} "top" | "middle" | "bottom"
+ */
+function readVerticalAlignment() {
+    const el = document.getElementById('text-vertical-alignment');
+    const value = el ? el.value : 'top';
+    return ['top', 'middle', 'bottom'].includes(value) ? value : 'top';
 }
 
 // ===================== Hybrid live server preview =====================
@@ -1246,7 +1266,8 @@ function buildPreviewRequest(mode) {
                 text: text,
                 settings: Object.assign({}, settings, {
                     font_size: parseInt(document.getElementById('text-font-size').value),
-                    alignment: document.getElementById('text-alignment').value
+                    alignment: document.getElementById('text-alignment').value,
+                    vertical_alignment: readVerticalAlignment()
                 })
             }
         };
@@ -1954,6 +1975,7 @@ async function openJob(jobId) {
             setFieldValue('text-input', params.text);
             setFieldValue('text-font-size', settings.font_size != null ? String(settings.font_size) : null);
             setFieldValue('text-alignment', settings.alignment);
+            setFieldValue('text-vertical-alignment', settings.vertical_alignment);
             activateComposeTab('text-tab');
             dispatchOn('text-input', 'input');
         } else if (type === 'qrcode') {

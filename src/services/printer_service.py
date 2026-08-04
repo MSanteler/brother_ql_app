@@ -1039,6 +1039,11 @@ class PrinterService:
 
             font_size = int(settings.get("font_size", 50))
             alignment = settings.get("alignment", "left")
+            # Vertical placement within the label. Only affects die-cut rolls,
+            # whose height is fixed by the physical label; continuous tape is cut
+            # to the text, so there is no slack to align within. Defaults to
+            # "top", which is the behaviour before this option existed.
+            vertical_alignment = settings.get("vertical_alignment", "top")
             text_area = width - 20  # 10 px margin on either side
 
             wrap = settings.get("text_wrap", True)
@@ -1107,6 +1112,11 @@ class PrinterService:
 
             total_height += 10
 
+            # Height the text actually needs, before the canvas is pinned to a
+            # die-cut label's fixed size. Keeping it lets the vertical alignment
+            # below work out how much slack there is to distribute.
+            text_height = total_height
+
             # A die-cut label is a fixed physical size, so pin the canvas to it:
             # convert() raises "Bad image dimensions" for anything else. With
             # auto_fit on the font was already stepped down to fit; with it off
@@ -1118,8 +1128,22 @@ class PrinterService:
             image = Image.new("RGB", (width, total_height), "white")
             draw = ImageDraw.Draw(image)
 
-            # Draw text
-            y = 10
+            # Where the text block starts vertically. Only a die-cut label can
+            # have slack: continuous tape is cut to whatever the text needs, so
+            # total_height == text_height and every alignment gives y = 10.
+            #
+            # Clamped at >= 0 so overflowing text (auto_fit off, or already at
+            # MIN_AUTO_FIT_FONT_SIZE) still starts at the top and clips from the
+            # bottom, rather than being pushed off the top edge by a negative
+            # offset and losing its first line instead of its last.
+            slack = max(0, total_height - text_height)
+            if vertical_alignment == "middle":
+                y = 10 + slack // 2
+            elif vertical_alignment == "bottom":
+                y = 10 + slack
+            else:
+                y = 10
+
             for line_text, line_width in line_metrics:
                 if alignment == "center":
                     x = (width - line_width) // 2

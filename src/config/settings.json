@@ -4,6 +4,7 @@
     "label_size": "62",
     "font_size": 50,
     "alignment": "left",
+    "vertical_alignment": "top",
     "rotate": 0,
     "threshold": 70.0,
     "dither": false,

@@ -1423,6 +1423,17 @@ components:
             instead, it means shrinking until no single word has to be broken
             mid-word. Only applies while text_wrap is on.
           default: true
+        vertical_alignment:
+          type: string
+          description: >
+            Vertical placement of the text block within the label. Only has an
+            effect on die-cut labels, whose height is fixed by the physical
+            label: continuous tape is cut to the height the text needs, so there
+            is no spare room to align within. Text that overflows a die-cut
+            label is always laid out from the top so it clips from the bottom.
+          enum: [top, middle, bottom]
+          default: top
+          example: "middle"
         rotate:
           type: integer
           description: Rotation angle in degrees
@@ -1511,6 +1522,14 @@ components:
           enum: [left, center, right]
           example: "left"
           default: "left"
+        vertical_alignment:
+          type: string
+          description: >
+            Default vertical placement of text within the label. Die-cut labels
+            only -- continuous tape has no spare height to align within.
+          enum: [top, middle, bottom]
+          example: "top"
+          default: "top"
         rotate:
           type: integer
           description: Default rotation angle

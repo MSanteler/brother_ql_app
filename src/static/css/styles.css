@@ -517,6 +517,16 @@ body.dark-mode .btn-print { color: #06222B; }
     image-rendering: crisp-edges;
     image-rendering: pixelated;
 }
+/* A form field whose control has no effect in the current configuration (e.g.
+   vertical alignment on continuous tape). Muted rather than hidden: the option
+   still needs to be discoverable, and a control that appears and disappears as
+   you change the roll is more confusing than one that is visibly inactive. */
+.field.is-inactive .lbl { opacity: 0.55; }
+.field.is-inactive select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .preview-qrcode { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .preview-qrcode img { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
 .preview-qrcode .qr-text { font-weight: 600; line-height: 1.2; word-break: break-word; }

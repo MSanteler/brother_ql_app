@@ -9,6 +9,7 @@ DEFAULT_SETTINGS = {
     "label_size": "62",
     "font_size": 50,
     "alignment": "left",
+    "vertical_alignment": "top",  # top | middle | bottom (die-cut only)
     "rotate": 0,
     "threshold": 70.0,
     "dither": False,
