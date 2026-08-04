@@ -133,6 +133,12 @@ function setupEventListeners() {
             const previewPlaceholder = document.getElementById('preview-placeholder');
             if (previewPlaceholder) previewPlaceholder.classList.remove('d-none');
 
+            // This resets the panel by hand rather than via hideOtherPreviews(),
+            // so clear the draft state explicitly too -- otherwise switching to
+            // an empty tab can leave the badge stranded over the placeholder.
+            // The per-tab re-render below sets it again if a draft is shown.
+            if (typeof setPreviewDraft === 'function') setPreviewDraft(false);
+
             // Drop any stale server preview from the previous tab; the active
             // tab's render is (re-)requested below if it has content.
             if (typeof clearServerPreview === 'function') clearServerPreview();

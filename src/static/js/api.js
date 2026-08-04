@@ -1228,6 +1228,16 @@ function clearServerPreview() {
         // browser try to load the page URL and logs a spurious ERR_INVALID_URL.
         serverImg.removeAttribute('src');
     }
+
+    // No authoritative render on screen. If a client preview is still showing
+    // (server render errored, or was never requested) it is provisional and
+    // must stay marked as such -- this is precisely when the user most needs to
+    // know the preview is an approximation. With nothing showing at all, the
+    // placeholder is next and the badge would be noise.
+    if (typeof setPreviewDraft === 'function' &&
+        typeof areAllPreviewsEmpty === 'function') {
+        setPreviewDraft(!areAllPreviewsEmpty(), false);
+    }
 }
 
 /**
@@ -1247,6 +1257,10 @@ function showServerPreview(dataUrl) {
         const el = document.getElementById(id);
         if (el) el.classList.add('d-none');
     });
+
+    // What is on screen is now exactly what will print: leave the draft state
+    // so the preview is shown at full strength and the badge disappears.
+    if (typeof setPreviewDraft === 'function') setPreviewDraft(false);
 }
 
 /**

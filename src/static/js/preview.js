@@ -17,6 +17,9 @@ function initPreviewElements() {
     if (previewQrcode) previewQrcode.classList.add('d-none');
     if (previewLabel) previewLabel.classList.add('d-none');
     if (previewPlaceholder) previewPlaceholder.classList.remove('d-none');
+
+    // Start with no draft badge: nothing is on screen but the placeholder.
+    setPreviewDraft(false);
 }
 
 /**
@@ -59,6 +62,31 @@ function areAllPreviewsEmpty() {
 }
 
 /**
+ * Mark the preview panel as showing a provisional client-rendered draft, which
+ * mutes it and shows the draft badge.
+ *
+ * Called when a client preview is shown, and cleared once the authoritative
+ * server render replaces it (or the panel empties).
+ * @param {boolean} isDraft
+ * @param {boolean} [pending=true] - whether a server render is on its way. When
+ *   false the badge drops the spinner and stops claiming to be "rendering":
+ *   the draft is all there is, because the render failed or was rejected.
+ */
+function setPreviewDraft(isDraft, pending = true) {
+    const container = document.getElementById('preview-container');
+    if (container) container.classList.toggle('is-draft', !!isDraft);
+
+    const spinner = document.getElementById('preview-draft-spinner');
+    const text = document.getElementById('preview-draft-text');
+    if (spinner) spinner.classList.toggle('d-none', !pending);
+    if (text) {
+        text.textContent = pending
+            ? 'Draft — rendering'
+            : 'Draft — approximate';
+    }
+}
+
+/**
  * Hide all previews except the specified one
  *
  * `preview-server` is included: it is a sibling in the same preview container,
@@ -67,6 +95,9 @@ function areAllPreviewsEmpty() {
  * labels in the panel until the next debounced render replaced it. The server
  * image is the one thing in that list nothing else hides -- showServerPreview()
  * hides all the client previews, but not the reverse.
+ *
+ * Showing any client preview also enters the draft state; the server render
+ * leaves it via showServerPreview().
  */
 function hideOtherPreviews(exceptId) {
     const allPreviews = ['preview-server', 'preview-text', 'preview-image',
@@ -79,6 +110,9 @@ function hideOtherPreviews(exceptId) {
             if (element) element.classList.add('d-none');
         }
     });
+
+    // A client preview is provisional; the server render is not.
+    setPreviewDraft(exceptId !== 'preview-server' && exceptId !== 'pdf-preview');
 
     // Hide placeholder when showing any preview
     if (previewPlaceholder) previewPlaceholder.classList.add('d-none');
