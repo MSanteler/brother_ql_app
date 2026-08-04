@@ -17,7 +17,11 @@ from src.services.queue_service import print_queue
 from src.services.settings_service import settings_service
 from src.services.pdf_renderer import render_pdf_thumbnails
 from src.utils.exceptions import ValidationError, PrinterError, ConfirmationRequiredError
-from src.utils.print_guard import enforce_large_batch_confirmation, is_confirmed
+from src.utils.print_guard import (
+    enforce_large_batch_confirmation,
+    enforce_media_match,
+    is_confirmed,
+)
 from src.utils.dry_run import is_dry_run, build_dry_run_response
 
 logger = structlog.get_logger()
@@ -75,6 +79,11 @@ def print_pdf() -> Dict[str, Any]:
         scale_mode = request.form.get('scale_mode', 'fit').strip() or 'fit'
         if scale_mode not in ('fit', 'fill'):
             raise ValidationError("scale_mode must be 'fit' or 'fill'", "scale_mode")
+
+        # Reject a label size the loaded media cannot print, before the job
+        # is queued -- printing is asynchronous, so an error raised during
+        # the print never reaches the caller.
+        enforce_media_match(settings)
 
         # Large batches require explicit confirmation before enqueuing.
         enforce_large_batch_confirmation(
