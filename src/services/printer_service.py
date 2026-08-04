@@ -1019,6 +1019,24 @@ class PrinterService:
             # rescaled by convert() on the way to the printer, which silently
             # changes the effective font size and softens the result.
             width, label_height, is_die_cut = get_label_geometry(settings.get("label_size"))
+
+            # A rotated die-cut label has to be laid out TRANSPOSED.
+            #
+            # convert() requires a die-cut image to match the roll's printable
+            # size exactly. Building the canvas at (696, 271) and then rotating a
+            # quarter turn yields (271, 696), which it rejects outright:
+            #
+            #   Bad image dimensions: (271, 696). Expecting: (696, 271).
+            #
+            # So swap the dimensions up front when the label is die-cut and the
+            # rotation is 90 or 270. Text then wraps to the width it will really
+            # occupy once rotated, and the finished canvas comes out matching the
+            # roll. print_image does not need this because it resizes after
+            # rotating; the text path goes straight to the printer.
+            rotate_quarter = int(settings.get("rotate", 0) or 0) % 360 in (90, 270)
+            if is_die_cut and label_height and rotate_quarter:
+                width, label_height = label_height, width
+
             font_size = int(settings.get("font_size", 50))
             alignment = settings.get("alignment", "left")
             text_area = width - 20  # 10 px margin on either side
