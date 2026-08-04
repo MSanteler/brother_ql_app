@@ -760,6 +760,34 @@
                             <p>Enter content in the form to see a live preview</p>
                         </div>
                     </div>
+
+                    <!-- Output controls: what the preview is rendered FOR.
+                         These override the saved settings for previewing and
+                         printing from this screen; they never write back to the
+                         saved configuration. -->
+                    <div class="preview-output-bar" id="preview-output-bar">
+                        <div class="output-field">
+                            <label class="output-lbl" for="preview-label-size">Label</label>
+                            <select id="preview-label-size" class="output-select"></select>
+                        </div>
+                        <div class="output-field">
+                            <label class="output-lbl" for="preview-rotate">Rotation</label>
+                            <select id="preview-rotate" class="output-select">
+                                <option value="0">0°</option>
+                                <option value="90">90°</option>
+                                <option value="180">180°</option>
+                                <option value="270">270°</option>
+                            </select>
+                        </div>
+                        <div class="output-loaded" id="preview-loaded-media" aria-live="polite">
+                            <span class="output-loaded-dot" id="preview-loaded-dot"></span>
+                            <span id="preview-loaded-text">Checking printer…</span>
+                        </div>
+                        <button type="button" class="output-reset d-none" id="preview-match-loaded"
+                                title="Set the label size to the roll currently in the printer">
+                            Match loaded
+                        </button>
+                    </div>
                 </div>
             </section>
         </main>

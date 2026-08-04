@@ -1184,6 +1184,191 @@ function readVerticalAlignment() {
     return ['top', 'middle', 'bottom'].includes(value) ? value : 'top';
 }
 
+// ===================== Output overrides (label size / rotation) ==============
+//
+// Label size and rotation live in Settings as the saved defaults, and are also
+// exposed under the preview so they can be changed while composing -- the
+// common case being "show me this on the roll I am about to load".
+//
+// These are OVERRIDES, not a second copy of the setting: they feed previews and
+// prints issued from this screen, and are never written back to the saved
+// configuration. Reading them through these two helpers keeps that rule in one
+// place; call sites must not read #label-size / #rotate directly.
+
+/**
+ * The label size the preview and any print from this screen should use.
+ * Falls back to the saved setting when the override is absent (older cached
+ * index.html) or empty.
+ * @returns {string}
+ */
+function activeLabelSize() {
+    const override = document.getElementById('preview-label-size');
+    if (override && override.value) return override.value;
+    const saved = document.getElementById('label-size');
+    return saved ? saved.value : '62';
+}
+
+/**
+ * The rotation the preview and any print from this screen should use.
+ * @returns {number} 0 | 90 | 180 | 270
+ */
+function activeRotate() {
+    const override = document.getElementById('preview-rotate');
+    const el = (override && override.value !== '') ? override : document.getElementById('rotate');
+    const n = parseInt(el ? el.value : '0', 10);
+    return [0, 90, 180, 270].includes(n) ? n : 0;
+}
+
+
+// ---- Loaded media + print gating ------------------------------------------
+//
+// The app already asks the printer which roll it holds; before this that answer
+// only ever appeared inside the Status modal. Showing it under the preview means
+// the working screen finally states what is actually in the printer.
+//
+// The override exists so a label can be composed for a roll that is not loaded
+// yet, so a mismatch is a normal intermediate state -- previews must keep
+// rendering. Printing, however, cannot succeed: the server rejects a mismatched
+// job with HTTP 400 (and would otherwise be silently discarded by the printer),
+// so the print buttons are disabled with the reason spelled out, rather than
+// letting the click fail.
+
+// Most recent successful media reading: {width, length, sizes[]} or null when
+// the printer could not be asked (asleep, unplugged, network printer).
+let loadedMedia = null;
+
+/**
+ * Ask the printer what roll it holds and update the readout + print gating.
+ * Failure is not an error state here -- an unreadable printer just means the
+ * UI cannot say, and must not block printing on a guess.
+ */
+async function refreshLoadedMedia() {
+    const printerUri = document.getElementById('printer-uri');
+    const printerModel = document.getElementById('printer-model');
+    if (!printerUri || !printerUri.value) return;
+
+    try {
+        const response = await fetch('/api/v1/printers/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                printer_uri: printerUri.value,
+                printer_model: printerModel ? printerModel.value : 'QL-800'
+            })
+        });
+        const data = response.ok ? await response.json() : null;
+        const d = data && data.details;
+        // media_width_mm is only present for USB printers that answered.
+        if (d && d.media_width_mm) {
+            loadedMedia = {
+                width: d.media_width_mm,
+                length: d.media_length_mm || 0,
+                sizes: d.loadable_label_sizes || [],
+                errors: d.errors || []
+            };
+        } else {
+            loadedMedia = null;
+        }
+    } catch (error) {
+        loadedMedia = null;
+    }
+    updateOutputBar();
+}
+
+/**
+ * Describe the loaded roll, e.g. "50mm continuous" or "62x29mm die-cut".
+ */
+function describeLoadedMedia(media) {
+    if (!media) return null;
+    return media.length
+        ? `${media.width}x${media.length}mm die-cut`
+        : `${media.width}mm continuous`;
+}
+
+/**
+ * Whether the chosen label size can print on the loaded roll.
+ *
+ * Uses loadable_label_sizes, which the server derives from the printer's own
+ * reported media -- the same source the server-side guard uses, so the button
+ * state and the guard cannot disagree. Returns true when unknown: never block
+ * on a guess.
+ */
+function labelSizeFitsLoaded(labelSize) {
+    if (!loadedMedia || !loadedMedia.sizes || !loadedMedia.sizes.length) return true;
+    return loadedMedia.sizes.includes(String(labelSize));
+}
+
+/**
+ * Refresh the loaded-media readout, the "Match loaded" affordance, and whether
+ * printing is allowed.
+ */
+function updateOutputBar() {
+    const dot = document.getElementById('preview-loaded-dot');
+    const text = document.getElementById('preview-loaded-text');
+    const wrap = document.getElementById('preview-loaded-media');
+    const matchBtn = document.getElementById('preview-match-loaded');
+    if (!wrap || !text) return;
+
+    const chosen = activeLabelSize();
+    const description = describeLoadedMedia(loadedMedia);
+    const fits = labelSizeFitsLoaded(chosen);
+
+    wrap.classList.remove('is-match', 'is-mismatch');
+
+    if (!description) {
+        // Could not ask the printer. Say so plainly and leave printing enabled:
+        // the server guard also lets an unreadable printer through, and the most
+        // common cause is simply that the QL has gone to sleep.
+        text.textContent = 'Printer not reporting media';
+        if (matchBtn) matchBtn.classList.add('d-none');
+        setPrintingBlocked(false);
+        return;
+    }
+
+    if (fits) {
+        wrap.classList.add('is-match');
+        text.textContent = `Loaded: ${description}`;
+        if (matchBtn) matchBtn.classList.add('d-none');
+        setPrintingBlocked(false);
+    } else {
+        wrap.classList.add('is-mismatch');
+        text.textContent = `Loaded: ${description} — ${chosen} will not print`;
+        if (matchBtn) matchBtn.classList.remove('d-none');
+        setPrintingBlocked(true, chosen, description);
+    }
+}
+
+/**
+ * Enable or disable every print button, explaining why when disabled.
+ *
+ * Previews are untouched: composing for a roll you have not loaded is the point
+ * of the override. Only the irreversible action is gated.
+ */
+function setPrintingBlocked(blocked, chosen, description) {
+    document.querySelectorAll('.btn-print').forEach(btn => {
+        btn.disabled = !!blocked;
+        if (blocked) {
+            btn.title = `Load ${chosen} to print this, or choose a size that ` +
+                        `fits the ${description} currently in the printer`;
+            btn.classList.add('is-blocked');
+        } else {
+            btn.removeAttribute('title');
+            btn.classList.remove('is-blocked');
+        }
+    });
+}
+
+/**
+ * Set the label override to the roll actually loaded.
+ */
+function matchLoadedMedia() {
+    if (!loadedMedia || !loadedMedia.sizes || !loadedMedia.sizes.length) return;
+    const select = document.getElementById('preview-label-size');
+    if (!select) return;
+    select.value = loadedMedia.sizes[0];
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
 // ===================== Hybrid live server preview =====================
 //
 // The client-side preview (preview.js) updates instantly while typing. In
@@ -1205,8 +1390,8 @@ function collectPreviewSettings() {
     return {
         printer_uri: document.getElementById('printer-uri').value,
         printer_model: document.getElementById('printer-model').value,
-        label_size: document.getElementById('label-size').value,
-        rotate: parseInt(document.getElementById('rotate').value),
+        label_size: activeLabelSize(),
+        rotate: activeRotate(),
         threshold: parseFloat(document.getElementById('threshold').value),
         dither: document.getElementById('dither').value === 'true',
         red: document.getElementById('red').value === 'true',

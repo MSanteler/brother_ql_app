@@ -414,11 +414,87 @@ function setupEventListeners() {
         updateVerticalAlignAvailability();
     }
 
+    // ---- Output controls under the preview (label size + rotation) ----
+    setupOutputBar();
+
     // ---- Print queue wiring (polling + actions) ----
     setupQueue();
 
     // ---- Console layout wiring (sidebar drawer + preview relocation) ----
     setupConsoleLayout();
+}
+
+/**
+ * Wire the output controls under the preview: label size and rotation.
+ *
+ * These override the saved settings for previewing (and are reflected in the
+ * loaded-media readout), but are never written back to the configuration --
+ * Settings remains the saved default.
+ *
+ * The label dropdown is cloned from the Settings one rather than duplicated in
+ * markup, so the two lists cannot drift apart as label support changes.
+ */
+function setupOutputBar() {
+    const savedLabel = document.getElementById('label-size');
+    const savedRotate = document.getElementById('rotate');
+    const outLabel = document.getElementById('preview-label-size');
+    const outRotate = document.getElementById('preview-rotate');
+    const matchBtn = document.getElementById('preview-match-loaded');
+
+    if (!outLabel || !savedLabel) return;
+
+    // Mirror the Settings options, then seed from the saved value.
+    outLabel.innerHTML = savedLabel.innerHTML;
+    outLabel.value = savedLabel.value;
+    if (outRotate && savedRotate) outRotate.value = savedRotate.value;
+
+    const onChange = () => {
+        // Vertical alignment applies to die-cut only, and the override is now
+        // what decides that.
+        if (typeof updateVerticalAlignAvailability === 'function') {
+            updateVerticalAlignAvailability();
+        }
+        if (typeof updateOutputBar === 'function') updateOutputBar();
+        const mode = getActiveComposeMode();
+        if (mode && typeof requestServerPreview === 'function') {
+            requestServerPreview(mode);
+        }
+    };
+
+    outLabel.addEventListener('change', onChange);
+    if (outRotate) outRotate.addEventListener('change', onChange);
+    if (matchBtn && typeof matchLoadedMedia === 'function') {
+        matchBtn.addEventListener('click', matchLoadedMedia);
+    }
+
+    // Changing the saved default in Settings should move the override with it,
+    // so Settings still behaves as "what is normally loaded" -- but only while
+    // the user has not deliberately overridden it.
+    savedLabel.addEventListener('change', () => {
+        if (!outLabel.dataset.touched) {
+            outLabel.value = savedLabel.value;
+            onChange();
+        }
+    });
+    if (savedRotate && outRotate) {
+        savedRotate.addEventListener('change', () => {
+            if (!outRotate.dataset.touched) {
+                outRotate.value = savedRotate.value;
+                onChange();
+            }
+        });
+    }
+    outLabel.addEventListener('change', () => { outLabel.dataset.touched = '1'; });
+    if (outRotate) {
+        outRotate.addEventListener('change', () => { outRotate.dataset.touched = '1'; });
+    }
+
+    // Ask the printer what it holds, then keep it roughly fresh. checkPrinterStatus
+    // already polls every 30s for the navbar pill; this is the media equivalent.
+    if (typeof refreshLoadedMedia === 'function') {
+        refreshLoadedMedia();
+        setInterval(refreshLoadedMedia, 30000);
+    }
 }
 
 /**
@@ -435,11 +511,14 @@ function setupEventListeners() {
  * there an x in it" test would quietly treat them as continuous.
  */
 function updateVerticalAlignAvailability() {
-    const labelSizeEl = document.getElementById('label-size');
+    // The override under the preview is what the render actually uses, so read
+    // that when present and fall back to the saved setting otherwise.
+    const labelSizeEl = document.getElementById('preview-label-size')
+        || document.getElementById('label-size');
     const field = document.getElementById('text-valign-field');
     const select = document.getElementById('text-vertical-alignment');
     const hint = document.getElementById('text-valign-hint');
-    if (!labelSizeEl || !select) return;
+    if (!labelSizeEl || !select || !labelSizeEl.options.length) return;
 
     const option = labelSizeEl.options[labelSizeEl.selectedIndex];
     const isDieCut = !!option && /die-cut/i.test(option.textContent || '');

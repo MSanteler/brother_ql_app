@@ -438,6 +438,19 @@ body.dark-mode .btn-print { color: #06222B; }
 .btn-print:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
 .btn-print:active { transform: translateY(1px); }
 .btn-print:disabled { opacity: .55; cursor: not-allowed; }
+/* Blocked because the chosen label cannot print on the loaded roll -- a state
+   the user can fix, not a broken button. Neutral rather than accent-coloured so
+   it does not still look like the primary action, and hover stays put. */
+.btn-print.is-blocked {
+    background: var(--panel-2);
+    border-color: var(--border);
+    color: var(--muted);
+    box-shadow: none;
+}
+.btn-print.is-blocked:hover {
+    background: var(--panel-2);
+    border-color: var(--border);
+}
 
 .btn-ghost {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -575,6 +588,87 @@ body.dark-mode .btn-print { color: #06222B; }
 .field.is-inactive select:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+/* ===== Output controls under the preview =====
+   Label size and rotation belong next to the preview they change, not three
+   tabs away in Settings. A footer row rather than a third column: it costs no
+   horizontal space and reads as "what this preview is for". */
+.preview-output-bar {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
+}
+.output-field { display: flex; flex-direction: column; gap: 4px; }
+.output-lbl {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted-dim);
+    font-weight: 600;
+}
+.output-select {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 9px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--ink);
+    min-width: 130px;
+}
+.output-select:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+/* Loaded-media readout. The app already asks the printer what roll it holds;
+   before this it only ever appeared inside the Status modal. */
+.output-loaded {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+    padding-bottom: 6px;
+}
+.output-loaded-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted-dim);
+    flex: none;
+}
+.output-loaded.is-match .output-loaded-dot { background: var(--green); }
+.output-loaded.is-mismatch .output-loaded-dot { background: var(--red); }
+.output-loaded.is-mismatch { color: var(--red); }
+
+/* "Match loaded" appears only when the override disagrees with the roll. */
+.output-reset {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    cursor: pointer;
+    white-space: nowrap;
+    margin-bottom: 5px;
+}
+.output-reset:hover { background: var(--accent-glow); }
+.output-reset.d-none { display: none; }
+
+@media (max-width: 560px) {
+    .output-loaded { margin-left: 0; width: 100%; }
+    .output-select { min-width: 0; width: 100%; }
+    .output-field { flex: 1 1 44%; }
 }
 
 .preview-qrcode { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
