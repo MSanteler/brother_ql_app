@@ -19,7 +19,11 @@ from src.utils.exceptions import (
     ImageProcessingError,
     ConfirmationRequiredError,
 )
-from src.utils.print_guard import enforce_large_batch_confirmation, is_confirmed
+from src.utils.print_guard import (
+    enforce_large_batch_confirmation,
+    enforce_media_match,
+    is_confirmed,
+)
 from src.utils.dry_run import is_dry_run, build_dry_run_response
 
 # Reuse the image controller's persistent-upload helpers to avoid duplication.
@@ -99,6 +103,11 @@ def print_text_image() -> Dict[str, Any]:
         for setting in required_settings:
             if setting not in settings:
                 raise ValidationError(f"{setting} is required", f"settings.{setting}")
+
+        # Reject a label size the loaded media cannot print, before the job
+        # is queued -- printing is asynchronous, so an error raised during
+        # the print never reaches the caller.
+        enforce_media_match(settings)
 
         # Large batches require explicit confirmation before enqueuing.
         enforce_large_batch_confirmation(
