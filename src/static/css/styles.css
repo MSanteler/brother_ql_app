@@ -504,7 +504,8 @@ body.dark-mode .btn-print { color: #06222B; }
 .preview-image { display: block; max-height: 60vh; object-fit: contain; padding: 6px; }
 /* Server-rendered, true-to-print label preview. Same "label" look as
    .preview-text (white card, shadow), but renders the exact 1-bit print
-   output crisply. When visible it sits on top of the client previews. */
+   output crisply. This is the authoritative preview: what it shows is what
+   the printer receives. */
 .preview-server {
     display: block;
     background: var(--label-bg);
@@ -516,6 +517,55 @@ body.dark-mode .btn-print { color: #06222B; }
     padding: 6px;
     image-rendering: crisp-edges;
     image-rendering: pixelated;
+}
+
+/* The client previews are a CSS approximation drawn with browser fonts and
+   layout -- they are NOT what prints, and they routinely disagree with the
+   real render on wrapping, line height and scale. They exist only to give
+   instant feedback in the ~250ms before the server render arrives.
+
+   Presenting an approximation with the same solid white "label" styling as the
+   real thing invites reading it as authoritative. So while a draft is on
+   screen, mute it and say so. */
+.preview-container.is-draft .preview-text,
+.preview-container.is-draft .preview-image,
+.preview-container.is-draft .preview-qrcode,
+.preview-container.is-draft .preview-label {
+    opacity: 0.45;
+    filter: saturate(0.6);
+}
+
+/* Badge marking the muted client preview as provisional. Hidden by default;
+   shown by .is-draft. Absolutely positioned so it never participates in the
+   container's flex column and cannot shift the preview it labels. */
+.preview-draft-badge {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--panel-2, rgba(0, 0, 0, 0.55));
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    color: var(--text-muted, #9aa4b2);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 2;
+}
+.preview-container.is-draft .preview-draft-badge {
+    display: inline-flex;
+}
+.preview-draft-badge .spinner-border {
+    width: 0.7rem;
+    height: 0.7rem;
+    border-width: 0.12em;
 }
 .preview-qrcode { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .preview-qrcode img { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }

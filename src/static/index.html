@@ -732,7 +732,11 @@
                     <span class="tag">output</span>
                 </div>
                 <div class="panel-body">
-                    <div class="preview-container">
+                    <div class="preview-container" id="preview-container">
+                        <span class="preview-draft-badge" id="preview-draft-badge" aria-live="polite">
+                            <span class="spinner-border" id="preview-draft-spinner" role="status" aria-hidden="true"></span>
+                            <span id="preview-draft-text">Draft &mdash; rendering</span>
+                        </span>
                         <img id="preview-server" class="preview-server d-none" src="" alt="Rendered label preview">
                         <div id="preview-text" class="preview-text d-none"></div>
                         <img id="preview-image" class="preview-image d-none" src="" alt="Image Preview">
