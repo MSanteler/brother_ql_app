@@ -1287,7 +1287,6 @@ class PrinterService:
                 # Height is pinned to the tape width so the text fills it once
                 # rotated, exactly as a die-cut label pins to its fixed height.
                 label_height = tape_width
-                is_die_cut = True  # pin the canvas; see the die-cut branch below
 
             font_size = int(settings.get("font_size", 50))
             alignment = settings.get("alignment", "left")
@@ -1317,7 +1316,7 @@ class PrinterService:
             # auto_fit shrinks the font until the text fits the medium. What
             # "fits" means depends on the medium, so the two cases differ.
             if settings.get("auto_fit", True) and wrap:
-                if is_die_cut and label_height:
+                if (is_die_cut or lengthwise) and label_height:
                     # Fixed physical height: shrink until the wrapped text fits
                     # inside it.
                     while font_size > MIN_AUTO_FIT_FONT_SIZE:
@@ -1386,6 +1385,19 @@ class PrinterService:
 
             total_height += 10
 
+            # Lengthwise: trim the unbounded direction back to the text.
+            #
+            # LENGTHWISE_CANVAS_PX is a wrapping bound, not a label length --
+            # leaving it would feed and cut ~1/3 metre of blank tape per print.
+            #
+            # Trimmed here rather than just before Image.new() so `width` is
+            # already final everywhere it is read. The draw loop derives each
+            # line's x from it, and the two must agree: a later trim would centre
+            # text against a canvas that no longer exists.
+            if lengthwise and line_metrics:
+                widest = max(w for _, w in line_metrics)
+                width = min(width, widest + 20)  # keep the 10px side margins
+
             # Height the text actually needs, before the canvas is pinned to a
             # die-cut label's fixed size. Keeping it lets the vertical alignment
             # below work out how much slack there is to distribute.
@@ -1396,17 +1408,10 @@ class PrinterService:
             # auto_fit on the font was already stepped down to fit; with it off
             # the requested size is honoured and the overflow is clipped, rather
             # than inventing a label the printer cannot cut.
-            if is_die_cut and label_height:
+            # Lengthwise pins the same way: the tape width became the canvas
+            # height, and it is just as fixed as a die-cut label's.
+            if (is_die_cut or lengthwise) and label_height:
                 total_height = label_height
-
-            # Lengthwise mode borrowed the die-cut branch to pin the canvas to the
-            # tape width, but its OTHER dimension is continuous tape and so is not
-            # fixed -- LENGTHWISE_CANVAS_PX was only ever a wrapping bound. Trim
-            # it back to the text, or every label would run the full 4000px and
-            # waste a third of a metre of tape per print.
-            if lengthwise and line_metrics:
-                widest = max(w for _, w in line_metrics)
-                width = min(width, widest + 20)  # keep the 10px side margins
 
             image = Image.new("RGB", (width, total_height), "white")
             draw = ImageDraw.Draw(image)
