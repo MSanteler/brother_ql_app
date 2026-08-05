@@ -23,7 +23,7 @@ except ImportError:
     DEFAULT_SETTINGS = {
         "printer_uri": "tcp://192.168.1.100", "printer_model": "QL-800", "label_size": "62",
         "font_size": 50, "alignment": "left", "vertical_alignment": "top",
-        "rotate_mode": "image",
+        "rotate_mode": "image", "scale_mode": "actual", "scale_percent": 100,
         "canva_broker_url": "", "canva_broker_token": "",
         "rotate": 0, "threshold": 70.0,
         "dither": False, "compress": False, "red": False,
@@ -103,7 +103,7 @@ class SettingsService:
         type_checks = {
             "printer_uri": str, "printer_model": str, "label_size": str,
             "font_size": (int, float), "alignment": str, "vertical_alignment": str,
-            "rotate_mode": str,
+            "rotate_mode": str, "scale_mode": str, "scale_percent": (int, float),
             "canva_broker_url": str, "canva_broker_token": str,
             "rotate": (int, float),
             "threshold": (int, float), "dither": bool, "compress": bool, "red": bool,
@@ -149,6 +149,18 @@ class SettingsService:
             raise ValueError(
                 f"Invalid vertical_alignment value: {settings_to_validate['vertical_alignment']}. "
                 "Must be top, middle or bottom.")
+
+        if ("scale_mode" in settings_to_validate
+                and settings_to_validate["scale_mode"] not in ["actual", "fit", "custom"]):
+            raise ValueError(
+                f"Invalid scale_mode value: {settings_to_validate['scale_mode']}. "
+                "Must be 'actual', 'fit', or 'custom'.")
+
+        if "scale_percent" in settings_to_validate:
+            _pct = settings_to_validate["scale_percent"]
+            if not isinstance(_pct, (int, float)) or not 10 <= _pct <= 400:
+                raise ValueError(
+                    f"Invalid scale_percent value: {_pct}. Must be a number 10-400.")
 
         if "rotate" in settings_to_validate and settings_to_validate["rotate"] not in [0, 90, 180, 270]:
              raise ValueError(f"Invalid rotate value: {settings_to_validate['rotate']}. Must be 0, 90, 180, or 270.")
@@ -318,7 +330,7 @@ class SettingsService:
     # when omitted. keep_alive_*/ipp_port/printers are excluded (not per-print).
     _INHERITABLE_PRINT_KEYS = (
         "printer_uri", "printer_model", "label_size", "font_size", "alignment",
-        "vertical_alignment", "rotate", "rotate_mode", "threshold", "dither", "compress", "red", "copies",
+        "vertical_alignment", "rotate", "rotate_mode", "scale_mode", "scale_percent", "threshold", "dither", "compress", "red", "copies",
         "cut_mode", "dpi_600", "hq",
     )
 

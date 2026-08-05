@@ -11,6 +11,14 @@ DEFAULT_SETTINGS = {
     "alignment": "left",
     "vertical_alignment": "top",  # top | middle | bottom (die-cut only)
     "rotate_mode": "image",  # image = rotate the render | layout = lay out lengthwise
+    # How font_size is treated. actual = honour it exactly (content may crop);
+    # fit = shrink/grow to fit the medium; custom = font_size * scale_percent%.
+    #
+    # Defaults to "actual" deliberately: the previous behaviour re-derived
+    # font_size whenever auto_fit was on, which was always -- it defaulted True
+    # and was not listed here, so a user who set a size rarely got it.
+    "scale_mode": "actual",
+    "scale_percent": 100,
     # Canva browsing. The OAuth credentials deliberately live in the broker
     # service, not here: refresh tokens are single-use and rotate, so exactly one
     # process may own them. This app only asks that service for a short-lived

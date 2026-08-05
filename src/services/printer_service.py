@@ -1176,6 +1176,62 @@ class PrinterService:
         return lines
 
     @staticmethod
+    def _resolve_scale_mode(settings: dict, font_size: int) -> tuple:
+        """Decide how ``font_size`` should be treated, and apply any scaling.
+
+        Returns ``(scale_mode, font_size)``.
+
+        The contract is that font_size is an INPUT. A user who types 60 gets 60
+        unless they explicitly ask for something else, because the previous
+        behaviour -- silently re-deriving it whenever auto_fit was on, which was
+        always, since it defaulted True and was not even listed in
+        default_settings -- meant the printed label routinely did not match what
+        was asked for.
+
+        Modes:
+          actual  font_size exactly as given. Content may overflow and crop; on
+                  continuous tape it simply wraps and the label grows.
+          fit     shrink until the text fits the medium, and (lengthwise only)
+                  grow to fill it. This is the historical auto_fit behaviour,
+                  now opt-in.
+          custom  font_size * scale_percent/100, then treated like `actual`.
+
+        Backward compatibility: an explicit ``auto_fit`` still selects a mode, so
+        existing callers -- the Canva poller, Homebox, saved settings -- keep
+        working unchanged. ``scale_mode`` wins if both are set.
+        """
+        mode = settings.get("scale_mode")
+
+        if mode is None:
+            # No explicit mode. Honour a caller that asked for auto_fit; anything
+            # else means "print what I asked for".
+            if "auto_fit" in settings:
+                mode = "fit" if settings.get("auto_fit") else "actual"
+            else:
+                mode = "actual"
+
+        mode = str(mode).lower()
+        if mode not in ("actual", "fit", "custom"):
+            raise ValueError(
+                f"Invalid scale_mode: {mode!r}. Must be actual, fit, or custom."
+            )
+
+        if mode == "custom":
+            try:
+                percent = float(settings.get("scale_percent", 100))
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Invalid scale_percent: {settings.get('scale_percent')!r}."
+                )
+            if not 10 <= percent <= 400:
+                raise ValueError(
+                    f"Invalid scale_percent: {percent}. Must be 10-400."
+                )
+            font_size = max(1, int(round(font_size * percent / 100.0)))
+
+        return mode, font_size
+
+    @staticmethod
     def _widest_word(lines: List[str], font: "ImageFont.FreeTypeFont") -> float:
         """Width in pixels of the widest single word across ``lines``.
 
@@ -1313,9 +1369,28 @@ class PrinterService:
 
             wrapped = wrap_all(font)
 
-            # auto_fit shrinks the font until the text fits the medium. What
-            # "fits" means depends on the medium, so the two cases differ.
-            if settings.get("auto_fit", True) and wrap:
+            # How the font size is treated. See _resolve_scale_mode: the point
+            # of scale_mode is that font_size is an INPUT, not a hint, unless
+            # the caller explicitly asks for it to be re-derived.
+            #
+            #   actual  -- honour font_size exactly; content may overflow/crop
+            #   fit     -- shrink to fit the medium (the historical auto_fit)
+            #   custom  -- font_size * scale_percent/100, then honoured exactly
+            #
+            # Rotation deliberately does NOT influence this. Laying a label out
+            # lengthwise and scaling it to fit are two separate decisions, and
+            # having one imply the other is what made the old behaviour
+            # surprising: setting a font size and then rotating silently
+            # replaced the size you set.
+            requested_font_size = font_size
+            scale_mode, font_size = self._resolve_scale_mode(settings, font_size)
+            if font_size != requested_font_size:
+                # Only `custom` changes the size here; re-render at the scaled
+                # size before any fitting logic looks at it.
+                font = ImageFont.truetype(self.font_path, font_size)
+                wrapped = wrap_all(font)
+
+            if scale_mode == "fit" and wrap:
                 if (is_die_cut or lengthwise) and label_height:
                     # Fixed physical height: shrink until the wrapped text fits
                     # inside it.
@@ -1346,7 +1421,7 @@ class PrinterService:
             # Without this the text keeps its original size and floats in the
             # middle of a much larger canvas, which is precisely the "rotation
             # does nothing useful" complaint this mode was added to fix.
-            if lengthwise and settings.get("auto_fit", True) and wrap:
+            if lengthwise and scale_mode == "fit" and wrap:
                 while font_size < MAX_LENGTHWISE_FONT_SIZE:
                     candidate = ImageFont.truetype(self.font_path, font_size + 2)
                     candidate_lines = (

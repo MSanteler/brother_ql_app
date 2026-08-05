@@ -84,15 +84,47 @@ def _ensure_brother_ql() -> None:
     raster.BrotherQLRaster = object  # type: ignore[attr-defined]
     conversion = types.ModuleType("brother_ql.conversion")
     conversion.convert = lambda *a, **k: b""  # type: ignore[attr-defined]
+    # printer_service imports interpret_response at module scope for the
+    # ESC i S status read, so without this stub the module cannot be imported
+    # at all in a bare environment and every test in it fails to collect.
+    reader = types.ModuleType("brother_ql.reader")
+    reader.interpret_response = lambda *a, **k: {}  # type: ignore[attr-defined]
+
+    # describe_media_mismatch looks up tape geometry in ALL_LABELS and returns
+    # None if the import fails -- i.e. without this stub the media-guard tests
+    # silently assert against a disabled guard and every rejection case "passes"
+    # by returning None. The identifiers below are the rolls this printer
+    # actually uses; tape_size is (width_mm, length_mm), 0 length = continuous.
+    labels = types.ModuleType("brother_ql.labels")
+
+    class _Label:
+        def __init__(self, identifier, tape_size):
+            self.identifier = identifier
+            self.tape_size = tape_size
+
+    labels.ALL_LABELS = [  # type: ignore[attr-defined]
+        _Label("12", (12, 0)),
+        _Label("29", (29, 0)),
+        _Label("50", (50, 0)),
+        _Label("62", (62, 0)),
+        _Label("29x62", (29, 62)),
+        _Label("29x90", (29, 90)),
+        _Label("62x29", (62, 29)),
+        _Label("62x100", (62, 100)),
+    ]
 
     brother_ql.backends = backends  # type: ignore[attr-defined]
     brother_ql.raster = raster  # type: ignore[attr-defined]
     brother_ql.conversion = conversion  # type: ignore[attr-defined]
+    brother_ql.reader = reader  # type: ignore[attr-defined]
+    brother_ql.labels = labels  # type: ignore[attr-defined]
 
     sys.modules["brother_ql"] = brother_ql
     sys.modules["brother_ql.backends"] = backends
     sys.modules["brother_ql.raster"] = raster
     sys.modules["brother_ql.conversion"] = conversion
+    sys.modules["brother_ql.reader"] = reader
+    sys.modules["brother_ql.labels"] = labels
 
 
 def _ensure_qrcode() -> None:
