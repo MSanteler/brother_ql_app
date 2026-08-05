@@ -82,3 +82,56 @@ class TestValidation:
         """actual and fit must leave font_size untouched even with a percent set."""
         for mode in ("actual", "fit"):
             assert resolve({"scale_mode": mode, "scale_percent": 50}, 60)[1] == 60
+
+
+class TestStatusRetry:
+    """A busy USB handle is a collision, not a fault.
+
+    The navbar polls every 30s, the editor polls loaded media on its own 30s
+    timer, and printing holds the handle for the whole job. Measured at roughly
+    1 failure in 6 polls with nothing printing -- and because the media guard
+    treats an unreadable printer as unknown media, reporting a collision as a
+    fault can refuse a legitimate print.
+    """
+
+    def test_retries_until_success(self, monkeypatch):
+        from src.services import printer_service as ps
+
+        calls = []
+
+        def flaky(uri, timeout_ms=5000):
+            calls.append(uri)
+            return {"media_width": 50} if len(calls) == 3 else None
+
+        monkeypatch.setattr(ps, "_read_usb_printer_status_once", flaky)
+        monkeypatch.setattr(ps.time, "sleep", lambda _s: None)
+
+        assert ps.read_usb_printer_status("usb://x") == {"media_width": 50}
+        assert len(calls) == 3
+
+    def test_gives_up_and_reports_unreadable(self, monkeypatch):
+        """A genuinely absent printer must still return None, not hang."""
+        from src.services import printer_service as ps
+
+        calls = []
+        monkeypatch.setattr(
+            ps, "_read_usb_printer_status_once",
+            lambda uri, timeout_ms=5000: calls.append(1))
+        monkeypatch.setattr(ps.time, "sleep", lambda _s: None)
+
+        assert ps.read_usb_printer_status("usb://x") is None
+        assert len(calls) == 3
+
+    def test_first_success_does_not_retry(self, monkeypatch):
+        """The common path must stay a single USB round trip."""
+        from src.services import printer_service as ps
+
+        calls = []
+
+        def ok(uri, timeout_ms=5000):
+            calls.append(uri)
+            return {"media_width": 62}
+
+        monkeypatch.setattr(ps, "_read_usb_printer_status_once", ok)
+        assert ps.read_usb_printer_status("usb://x") == {"media_width": 62}
+        assert len(calls) == 1

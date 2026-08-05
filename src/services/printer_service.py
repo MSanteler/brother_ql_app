@@ -59,8 +59,34 @@ STATUS_PACKET_BYTES = 32
 STATUS_READ_SETTLE_SECONDS = 0.5
 
 
-def read_usb_printer_status(printer_uri: str, timeout_ms: int = 5000):
-    """Ask a USB-attached QL what media is loaded and whether it reports errors.
+def read_usb_printer_status(printer_uri: str, timeout_ms: int = 5000,
+                            _retries: int = 3, _retry_delay: float = 0.25):
+    """Ask a USB-attached QL what media is loaded, retrying a transient busy.
+
+    Retries exist because the USB handle is exclusive and several things want it:
+    the navbar polls printer status every 30s, the editor polls loaded media on
+    its own 30s timer, and any print grabs it for the duration of the job. When
+    two land together the loser gets ``[Errno 16] Resource busy`` -- measured at
+    roughly 1 poll in 6 with nothing printing at all.
+
+    That is a collision, not a fault, and reporting it as "printer not
+    reporting" is actively harmful: the media guard treats an unreadable printer
+    as unknown media, so a transient collision could refuse a legitimate print.
+    A few short retries turn it back into the non-event it should be.
+    """
+    for attempt in range(max(1, _retries)):
+        result = _read_usb_printer_status_once(printer_uri, timeout_ms)
+        if result is not None:
+            return result
+        if attempt < _retries - 1:
+            time.sleep(_retry_delay)
+    return None
+
+
+def _read_usb_printer_status_once(printer_uri: str, timeout_ms: int = 5000):
+    """Single attempt. See read_usb_printer_status for why it is retried.
+
+    Ask a USB-attached QL what media is loaded and whether it reports errors.
 
     The QL series answers an ``ESC i S`` status request with a 32-byte packet
     describing the media actually in the machine, which
