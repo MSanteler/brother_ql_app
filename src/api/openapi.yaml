@@ -989,6 +989,15 @@ paths:
           required: false
           schema: { type: string, default: root }
           description: Folder id to list within. Defaults to the user's root.
+        - name: recursive
+          in: query
+          required: false
+          schema: { type: boolean, default: true }
+          description: >
+            Walk sub-folders and return them flattened with a depth, so the whole
+            tree fits one indented dropdown. On by default because folders are
+            commonly nested and a root-only list cannot reach them. Bounded by
+            depth and total count.
       responses:
         '200':
           description: Folders
@@ -1004,6 +1013,9 @@ paths:
                       properties:
                         id: { type: string }
                         name: { type: string }
+                        depth:
+                          type: integer
+                          description: Nesting level; 0 for a direct child of parent.
         '400': { $ref: '#/components/responses/BadRequest' }
   /canva/designs:
     get:

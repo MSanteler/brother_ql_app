@@ -36,6 +36,11 @@ EXPORT_POLL_INTERVAL = 2.0
 # Network timeout for both the broker and Canva itself.
 HTTP_TIMEOUT = 30
 
+# Bounds on the recursive folder walk. Listing folders costs one API call each, so
+# without these a deep or wide account would make opening the picker very slow.
+MAX_FOLDER_DEPTH = 4
+MAX_FOLDERS_WALKED = 200
+
 
 class CanvaNotConfigured(RuntimeError):
     """No broker URL is set, so Canva browsing is switched off."""
@@ -218,6 +223,59 @@ class CanvaService:
                 break
 
         return folders
+
+
+    def walk_folders(self, parent: str = "root") -> List[Dict[str, Any]]:
+        """Return every folder under ``parent``, flattened, in display order.
+
+        Each entry carries a ``depth`` so the UI can indent a single dropdown
+        rather than making the user navigate. Nesting is real and shallow in
+        practice -- a labels folder living one level inside a personal folder is
+        exactly the case that made a root-only picker useless.
+
+        Bounded deliberately. This costs one API call per folder, so an account
+        with a deep or wide tree could otherwise turn opening a dropdown into
+        hundreds of requests:
+
+        * ``MAX_FOLDER_DEPTH`` stops runaway recursion.
+        * ``MAX_FOLDERS_WALKED`` caps the total, and the cap is reported rather
+          than silently truncating the list.
+        * ``seen`` guards against a folder graph that is not a tree. Canva should
+          not return one, but a cycle here would hang the request rather than
+          fail, which is the worse outcome.
+        """
+        flat: List[Dict[str, Any]] = []
+        seen = {parent}
+        truncated = False
+
+        def visit(folder_id: str, depth: int) -> None:
+            nonlocal truncated
+            if depth > MAX_FOLDER_DEPTH or truncated:
+                return
+            try:
+                children = self.list_folders(folder_id)
+            except Exception as exc:
+                # One unreadable folder must not lose the whole tree -- a shared
+                # folder we lack permission on is a normal thing to hit.
+                logger.warning("Skipped unreadable Canva folder",
+                               folder_id=folder_id, error=str(exc))
+                return
+
+            for child in children:
+                if child["id"] in seen:
+                    continue
+                if len(flat) >= MAX_FOLDERS_WALKED:
+                    truncated = True
+                    return
+                seen.add(child["id"])
+                flat.append({**child, "depth": depth})
+                visit(child["id"], depth + 1)
+
+        visit(parent, 0)
+        if truncated:
+            logger.warning("Canva folder walk hit its cap",
+                           cap=MAX_FOLDERS_WALKED, returned=len(flat))
+        return flat
 
     # -- export -----------------------------------------------------------
     def export_design_png(self, design_id: str) -> bytes:

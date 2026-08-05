@@ -64,10 +64,20 @@ def get_canva_status() -> Dict[str, Any]:
         return {"configured": True, "connected": False, "message": str(exc)}
 
 
-def list_canva_folders(parent: str = "root") -> Dict[str, Any]:
-    """List sub-folders, for the folder picker."""
+def list_canva_folders(parent: str = "root", recursive: bool = True) -> Dict[str, Any]:
+    """List folders for the picker.
+
+    Recursive by default: a labels folder nested one level inside a personal
+    folder is the common case, and a root-only list simply cannot reach it. Each
+    entry carries a ``depth`` so the UI can indent one flat dropdown instead of
+    making the user navigate. Pass recursive=false for a single level.
+    """
     try:
-        return {"folders": canva_service.list_folders(parent)}
+        if recursive:
+            return {"folders": canva_service.walk_folders(parent)}
+        return {"folders": [
+            {**f, "depth": 0} for f in canva_service.list_folders(parent)
+        ]}
     except CanvaNotConfigured as exc:
         raise ValidationError(str(exc), "canva_broker_url") from exc
     except CanvaNotConnected as exc:

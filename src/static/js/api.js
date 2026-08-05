@@ -1277,10 +1277,16 @@ async function loadCanvaFolders() {
         const body = await response.json();
         const folders = body.folders || [];
 
+        // Indent by nesting depth so one flat dropdown conveys the tree.
+        // Figure spaces (U+2007) rather than &nbsp; or padding: option elements
+        // ignore CSS padding in most browsers, and entities inside <option> are
+        // unreliable, but a real space character always renders.
         select.innerHTML = '<option value="">Select a folder…</option>' +
-            folders.map(f =>
-                `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`
-            ).join('');
+            folders.map(f => {
+                const indent = '\u2007\u2007'.repeat(Math.max(0, f.depth || 0));
+                return `<option value="${escapeHtml(f.id)}">` +
+                       `${indent}${escapeHtml(f.name)}</option>`;
+            }).join('');
 
         if (!folders.length) {
             showCanvaNotice('No folders found in your Canva account.');
