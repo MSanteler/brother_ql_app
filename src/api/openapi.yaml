@@ -955,6 +955,129 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /canva/status:
+    get:
+      summary: Canva availability
+      description: >
+        Whether Canva browsing is configured and authorized. Never fails: the UI
+        uses it to decide whether to offer the Canva tab, so "not configured" and
+        "not connected" are ordinary answers.
+      operationId: api.canva_controller.get_canva_status
+      tags:
+        - canva
+      responses:
+        '200':
+          description: Availability
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  connected: { type: boolean }
+                  message: { type: string }
+  /canva/folders:
+    get:
+      summary: List Canva folders
+      description: Sub-folders of a folder, for the folder picker.
+      operationId: api.canva_controller.list_canva_folders
+      tags:
+        - canva
+      parameters:
+        - name: parent
+          in: query
+          required: false
+          schema: { type: string, default: root }
+          description: Folder id to list within. Defaults to the user's root.
+      responses:
+        '200':
+          description: Folders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /canva/designs:
+    get:
+      summary: List designs in a Canva folder
+      description: >
+        Costs no export quota -- Canva returns a thumbnail URL with each item, so
+        designs can be browsed without exporting them. Thumbnail URLs expire
+        after roughly 15 minutes and are passed through rather than cached.
+      operationId: api.canva_controller.list_canva_designs
+      tags:
+        - canva
+      parameters:
+        - name: folder_id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Designs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  designs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        title: { type: string }
+                        updated_at: { type: string }
+                        thumbnail: { type: string }
+                        edit_url: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /canva/print:
+    post:
+      summary: Print a Canva design
+      description: >
+        Exports the design as PNG and queues it exactly as an uploaded image
+        would be, so the queue's reprint and "open in composer" behaviour applies
+        unchanged. The media guard runs BEFORE the export, so an export is never
+        spent on a job the loaded roll cannot print.
+      operationId: api.canva_controller.print_canva_design
+      tags:
+        - canva
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [design_id]
+              properties:
+                design_id: { type: string }
+                title:
+                  type: string
+                  description: Used as the queue label and re-open filename.
+                settings: { $ref: '#/components/schemas/PrintSettings' }
+                confirm_large_batch: { type: boolean, default: false }
+                dry_run: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  job_id: { type: string }
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
 components:
   # The global `security:` above references this scheme so the Swagger UI shows
   # an "Authorize" button. Actual enforcement is the Flask before_request hook
