@@ -1035,9 +1035,20 @@ paths:
                       properties:
                         id: { type: string }
                         title: { type: string }
-                        updated_at: { type: string }
-                        thumbnail: { type: string }
-                        edit_url: { type: string }
+                        updated_at:
+                          # Canva sends a Unix timestamp (integer). Older items
+                          # and the created_at fallback can be absent, in which
+                          # case the service substitutes 0 -- so this is a number,
+                          # not a date-time string.
+                          type: integer
+                          format: int64
+                        # Both can legitimately be absent: the service passes
+                        # through whatever Canva sent, and a design without a
+                        # thumbnail or edit URL is normal, not an error. Declared
+                        # nullable so response validation does not 500 on it --
+                        # which it did for updated_at before this was fixed.
+                        thumbnail: { type: string, nullable: true }
+                        edit_url: { type: string, nullable: true }
         '400': { $ref: '#/components/responses/BadRequest' }
   /canva/export:
     post:
