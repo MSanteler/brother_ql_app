@@ -746,7 +746,16 @@
                             <span class="spinner-border" id="preview-draft-spinner" role="status" aria-hidden="true"></span>
                             <span id="preview-draft-text">Draft &mdash; rendering</span>
                         </span>
+                        <!-- Feed direction: the edge that leaves the printer
+                             first. Which way that runs depends on rotation and
+                             rotate_mode, so it is positioned from JS. -->
+                        <div class="preview-feed d-none" id="preview-feed" aria-hidden="true">
+                            <span class="preview-feed-label">feed</span>
+                            <span class="preview-feed-line"></span>
+                            <span class="preview-feed-arrow"></span>
+                        </div>
                         <img id="preview-server" class="preview-server d-none" src="" alt="Rendered label preview">
+                        <div class="preview-dims d-none" id="preview-dims" aria-live="polite"></div>
                         <div id="preview-text" class="preview-text d-none"></div>
                         <img id="preview-image" class="preview-image d-none" src="" alt="Image Preview">
                         <div id="preview-qrcode" class="preview-qrcode d-none"></div>

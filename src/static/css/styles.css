@@ -671,6 +671,66 @@ body.dark-mode .btn-print { color: #06222B; }
     .output-field { flex: 1 1 44%; }
 }
 
+/* ===== Preview measurements + feed direction =====
+   The label on screen has no inherent scale, so a 29mm and a 62mm render look
+   the same size. These two pieces of chrome say how big it really is, and which
+   way it comes out of the printer -- the latter matters now that a label can be
+   laid out lengthwise. */
+.preview-dims {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    text-align: center;
+}
+.preview-dims .dim-sep { opacity: 0.45; margin: 0 7px; }
+.preview-dims .dim-px { opacity: 0.6; }
+
+/* Feed arrow. Absolutely positioned inside .preview-container so it never
+   participates in the flex column and cannot shift the label it annotates. */
+.preview-feed {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--muted-dim);
+    font-family: var(--mono);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    pointer-events: none;
+    opacity: 0.75;
+    z-index: 1;
+}
+.preview-feed-line {
+    display: block;
+    background: currentColor;
+    opacity: 0.5;
+}
+/* Horizontal feed (label leaves left or right edge first). */
+.preview-feed.is-horizontal { flex-direction: row; }
+.preview-feed.is-horizontal .preview-feed-line { width: 26px; height: 1px; }
+.preview-feed.is-horizontal .preview-feed-line::after {
+    content: ""; position: absolute; /* arrowhead drawn with borders below */
+}
+/* Vertical feed (label runs down the roll). */
+.preview-feed.is-vertical { flex-direction: column; gap: 4px; }
+.preview-feed.is-vertical .preview-feed-line { width: 1px; height: 26px; }
+.preview-feed-arrow {
+    width: 0; height: 0;
+    border-style: solid;
+    opacity: 0.55;
+}
+.preview-feed.is-vertical .preview-feed-arrow {
+    border-width: 5px 3.5px 0 3.5px;
+    border-color: currentColor transparent transparent transparent;
+}
+.preview-feed.is-horizontal .preview-feed-arrow {
+    border-width: 3.5px 0 3.5px 5px;
+    border-color: transparent transparent transparent currentColor;
+}
+
 .preview-qrcode { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .preview-qrcode img { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
 .preview-qrcode .qr-text { font-weight: 600; line-height: 1.2; word-break: break-word; }

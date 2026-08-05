@@ -1421,6 +1421,85 @@ function collectPreviewSettings() {
 }
 
 /**
+ * Physical size of a rendered label, from the PNG's own pixel dimensions.
+ *
+ * Derived from the image rather than looked up from the label id, so it stays
+ * honest for every mode -- continuous tape whose length follows the text, a
+ * die-cut roll's fixed size, or a lengthwise layout. The printer rasterises at
+ * 300dpi, so 1mm is 300/25.4 px.
+ */
+const PX_PER_MM = 300 / 25.4;
+
+/**
+ * Show the rendered label's real dimensions, and which way it feeds.
+ *
+ * On screen a 29mm and a 62mm label look identical, so the caption is the only
+ * thing that says how big the thing actually is.
+ * @param {HTMLImageElement} img - the loaded server-preview image
+ */
+function updatePreviewDims(img) {
+    const out = document.getElementById('preview-dims');
+    if (!out) return;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    if (!w || !h) {
+        out.classList.add('d-none');
+        return;
+    }
+    const wmm = Math.round(w / PX_PER_MM);
+    const hmm = Math.round(h / PX_PER_MM);
+    out.innerHTML =
+        `${wmm} \u00d7 ${hmm} mm` +
+        `<span class="dim-sep">|</span>` +
+        `<span class="dim-px">${w} \u00d7 ${h} px @ 300dpi</span>`;
+    out.classList.remove('d-none');
+    updateFeedIndicator(img);
+}
+
+/**
+ * Point the feed arrow along the direction the label leaves the printer.
+ *
+ * This is ALWAYS the image's Y axis, not "whichever side is longer". The QL
+ * rasterises one line at a time across the tape width, and the tape advances
+ * per line -- so X is the tape width and Y is the feed direction, for every
+ * label type. brother_ql's own geometry agrees: 62x29 is tape_size (62, 29) and
+ * dots_printable (696, 271), i.e. 62mm across X and the 29mm length down Y.
+ *
+ * The arrow is therefore always vertical; only the "how long is that" reading
+ * changes. Kept as a function so the class is applied in one place.
+ */
+function updateFeedIndicator(img) {
+    const feed = document.getElementById('preview-feed');
+    if (!feed) return;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    if (!w || !h) {
+        feed.classList.add('d-none');
+        return;
+    }
+
+    feed.classList.add('is-vertical');
+    feed.classList.remove('is-horizontal');
+
+    // Sit just outside the label on the right, vertically centred, so it never
+    // overlaps the render it annotates.
+    feed.style.right = '14px';
+    feed.style.top = '50%';
+    feed.style.transform = 'translateY(-50%)';
+    feed.classList.remove('d-none');
+}
+
+/**
+ * Hide the dimensions caption and feed arrow (no server render on screen).
+ */
+function clearPreviewDims() {
+    const out = document.getElementById('preview-dims');
+    const feed = document.getElementById('preview-feed');
+    if (out) out.classList.add('d-none');
+    if (feed) feed.classList.add('d-none');
+}
+
+/**
  * Hide the server preview image and clear its source. The client preview /
  * placeholder underneath then becomes visible again.
  */
@@ -1432,6 +1511,7 @@ function clearServerPreview() {
         // browser try to load the page URL and logs a spurious ERR_INVALID_URL.
         serverImg.removeAttribute('src');
     }
+    clearPreviewDims();
 
     // No authoritative render on screen. If a client preview is still showing
     // (server render errored, or was never requested) it is provisional and
@@ -1454,6 +1534,13 @@ function showServerPreview(dataUrl) {
     if (!serverImg) return;
     serverImg.src = dataUrl;
     serverImg.classList.remove('d-none');
+
+    // naturalWidth/Height are only meaningful once decoded.
+    if (serverImg.complete) {
+        updatePreviewDims(serverImg);
+    } else {
+        serverImg.onload = () => updatePreviewDims(serverImg);
+    }
 
     // Hide the instant client previews + placeholder; the server image wins.
     ['preview-text', 'preview-image', 'preview-qrcode', 'preview-label',
