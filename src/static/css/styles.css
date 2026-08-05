@@ -23,6 +23,7 @@
     --green: #059669;
     --red: #DC2626;
     --label-bg: #FFFFFF;
+    --liner: #E6E1D8;
     --label-ink: #0a0a0a;
     --radius: 12px;
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -49,6 +50,7 @@ body.dark-mode {
     --green: #34D399;
     --red: #F87171;
     --label-bg: #FFFFFF;
+    --liner: #E6E1D8;
     --label-ink: #0a0a0a;
     --shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
 }
@@ -530,19 +532,159 @@ body.dark-mode .btn-print { color: #06222B; }
    Now the wrapper carries the label styling and is sized to the real roll (JS
    sets --tape-aspect from the loaded media), and the raster sits inside it at
    true proportion. */
-.preview-tape {
+/* THREE LAYERS, all to scale.
+   
+     backing  the liner roll. Continuous, so it runs off the top and bottom of
+              the view -- it has no ends, and drawing any would be a lie.
+     label    the sticker on it. Full tape width on continuous stock, cut square
+              at both ends; a rounded rectangle on die-cut, with the next one
+              peeking in below.
+     raster   the printed area, which is often SMALLER than the label -- that
+              gap is the thing this whole preview exists to make visible.
+   
+   Feed is always DOWN the screen. Tape leaves the printer one way regardless of
+   how the artwork is rotated; updateFeedIndicator pins its arrow vertically for
+   the same reason. Deriving it from the raster made the roll appear to change
+   direction when the picture on it turned. */
+
+.preview-backing {
+    position: relative;
+    isolation: isolate;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--label-bg);
-    border-radius: 6px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    background: var(--liner, #E6E1D8);
+    /* Backing is a little wider than the printable area on every roll. */
+    padding: 0 5px;
     max-width: 100%;
     max-height: 60vh;
-    padding: 6px;
-    /* Set from JS as width/height of the tape in mm. Falls back to letting the
-       image size the box, which is the old behaviour, if the roll is unknown. */
+    /* Feed is downward, so the roll comes IN from the top -- that edge fades
+       because there is always more roll behind. The bottom is set per roll
+       type below: continuous fades too (the roll runs on), die-cut ends at a
+       real cut and stays hard. */
+    -webkit-mask-image: var(--backing-mask, none);
+    mask-image: var(--backing-mask, none);
+    padding-top: 30px;
+    padding-bottom: 30px;
+}
+
+/* Faint liner texture so the backing does not read as flat card. */
+.preview-backing::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom,
+        rgba(0, 0, 0, 0.035) 0 1px, transparent 1px 5px);
+    z-index: 0;
+}
+
+.preview-sticker {
+    position: relative;
+    z-index: 1;
+    background: var(--label-bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     aspect-ratio: var(--tape-aspect, auto);
+    max-width: 100%;
+    /* A hairline edge and a slight lift, so the label reads as paper sitting ON
+       the liner. Without it a white label on a light liner has no visible
+       boundary and its corners -- the whole point on die-cut -- cannot show. */
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.16),
+        0 2px 5px rgba(0, 0, 0, 0.16);
+}
+
+/* Continuous: the roll continues off the TOP, so the label runs into the fade
+   there -- unprinted tape still on the roll. The bottom is the cut that already
+   happened, so it is hard. You never print onto tape that still has the
+   previous label attached. */
+.preview-backing.is-endless {
+    --backing-mask: linear-gradient(to bottom,
+        transparent 0, #000 22px, #000 100%);
+}
+
+/* Die-cut: the roll continues off the TOP (tape feeds out toward the viewer),
+   so that edge fades. The bottom is where the tape has already emerged -- a
+   real edge, so it stays hard. */
+.preview-backing.is-diecut {
+    --backing-mask: linear-gradient(to bottom,
+        transparent 0, #000 26px, #000 100%);
+}
+
+/* Continuous: the label is cut square across the full tape width, so the only
+   edges are the two cuts. Dashes mark where the blade lands. */
+.preview-backing.is-endless .preview-sticker {
+    border-radius: 0;
+}
+
+/* THE CUT.
+   
+   On continuous stock the printer cuts the tape, so the label has a hard edge
+   at BOTH ends -- the previous label was already cut off, and this one will be
+   cut after it prints. Neither end is a fade.
+   
+   The blade crosses the whole tape, liner included, so the line spans the full
+   backing width rather than just the label. It is drawn just outside the label
+   because that is where the tape is severed: right at the end of the printed
+   area, not through it.
+   
+   Die-cut has no cut line at all -- the labels are already separated, and the
+   printer just feeds past the gap. */
+.preview-backing.is-endless .preview-sticker::after {
+    content: "";
+    position: absolute;
+    left: -5px;
+    right: -5px;
+    bottom: -1px;
+    height: 0;
+    border-top: 1px dashed rgba(200, 70, 70, 0.85);
+    pointer-events: none;
+}
+
+/* The label continues onto unprinted tape at the top rather than ending there.
+   Extending it into the fade is what makes it read as continuous stock: there
+   is no edge up there, just more tape. */
+.preview-backing.is-endless .preview-sticker {
+    margin-top: -30px;
+    padding-top: 30px;
+}
+
+/* Die-cut needs no cut line: the labels are already separated on the liner and
+   the printer just feeds past the gap. The visible liner between this label and
+   the next one IS the boundary -- drawing a blade stroke there would describe
+   something the printer does not do. */
+
+/* Die-cut: real rounded corners, and the next label peeking in above. */
+.preview-backing.is-diecut .preview-sticker {
+    border-radius: 8px;
+    /* Breathing room so the label's rounded corners are actually visible. On
+       die-cut the raster fills the whole label, so without an inset its square
+       dashed outline sits exactly on top of the corners and hides them. */
+    padding: 5px;
+}
+
+/* The next label on the roll, peeking in at the TOP.
+   
+   Feed runs down the screen, which means tape is coming OUT toward the viewer.
+   So the roll -- and everything not yet printed -- is behind the current label,
+   at the top. Showing the next label below would mean it had already fed past.
+   
+   Its trailing edge is rounded (that is the real die-cut corner); the top is
+   square because it disappears into the fade. */
+.preview-backing.is-diecut::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    right: 5px;
+    top: 0;
+    height: 18px;
+    background: var(--label-bg);
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+    pointer-events: none;
+    z-index: 1;
 }
 
 .preview-server {
@@ -552,6 +694,16 @@ body.dark-mode .btn-print { color: #06222B; }
     object-fit: contain;
     image-rendering: crisp-edges;
     image-rendering: pixelated;
+    /* The raster is white on a white label, so without an edge the printed area
+       is invisible and the label/raster distinction is lost. */
+    outline: 1px dashed rgba(0, 0, 0, 0.3);
+}
+
+/* When the raster covers the whole tape width there is no blank tape to show,
+   and the outline is just noise on an edge the tape already draws. JS adds this
+   when the two match. */
+.preview-backing.is-full-width .preview-server {
+    outline: none;
 }
 
 /* The client previews are a CSS approximation drawn with browser fonts and
@@ -1231,3 +1383,72 @@ body.dark-mode .queue-badge { color: #06222B; }
     font-size: 13px;
 }
 .demo-notice i { color: var(--accent); }
+
+
+/* Dimension readout: each axis gets an arrow and a name, so "59mm" cannot be
+   mistaken for the other measurement. */
+.dim-axis {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    margin-right: 12px;
+}
+
+.dim-tick {
+    opacity: 0.55;
+    font-size: 0.95em;
+}
+
+.dim-axis-name {
+    opacity: 0.5;
+    font-size: 0.82em;
+    letter-spacing: 0.04em;
+}
+
+/* Tooltips for the preview layers. The three-layer drawing is only obvious once
+   someone knows what they are looking at. */
+.preview-legend {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    margin-top: 10px;
+    font-size: 0.78rem;
+    opacity: 0.7;
+}
+
+.preview-legend .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: help;
+}
+
+.preview-legend .legend-swatch {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.legend-swatch.is-backing { background: var(--liner, #E6E1D8); }
+.legend-swatch.is-label { background: var(--label-bg); }
+.legend-swatch.is-raster {
+    background: transparent;
+    outline: 1px dashed rgba(255, 255, 255, 0.5);
+    outline-offset: -1px;
+}
+
+
+/* Feed measurement, beside the feed arrow. Vertical like the axis it labels. */
+.preview-feed-mm {
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--muted-dim);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+
+.preview-feed.is-vertical .preview-feed-mm {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+}

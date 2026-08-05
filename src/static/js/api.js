@@ -1750,8 +1750,34 @@ function updatePreviewDims(img) {
     }
     const wmm = Math.round(w / PX_PER_MM);
     const hmm = Math.round(h / PX_PER_MM);
+
+    // Dimension lines, not a sentence. Which number is the tape and which is
+    // the feed depends on rotation, so an unlabelled "2 x 47 mm" pair is
+    // ambiguous -- it was read as a 47mm-long label when 47 was the tape width.
+    // Ticks alongside each axis say what is being measured without prose.
+    const chosenCap = labelSizeToMm(
+        typeof activeLabelSize === 'function' ? activeLabelSize() : null);
+    const tapeMm = (chosenCap && chosenCap.width)
+        || (loadedMedia && loadedMedia.width);
+    let dims;
+    if (tapeMm) {
+        const widthIsTape = Math.abs(wmm - tapeMm) < Math.abs(hmm - tapeMm);
+        const acrossMm = widthIsTape ? wmm : hmm;
+        const feedMm = widthIsTape ? hmm : wmm;
+        // Across-tape stays in the caption; the feed measurement moves next to
+        // the feed arrow, where it labels the axis it describes instead of
+        // sitting in a pair the reader has to disambiguate.
+        dims =
+            `<span class="dim-axis"><span class="dim-tick">\u2194</span>` +
+            `${acrossMm} mm<span class="dim-axis-name">across tape</span></span>`;
+        const feedOut = document.getElementById('preview-feed-mm');
+        if (feedOut) feedOut.textContent = `${feedMm} mm`;
+    } else {
+        dims = `${wmm} \u00d7 ${hmm} mm`;
+    }
+
     out.innerHTML =
-        `${wmm} \u00d7 ${hmm} mm` +
+        dims +
         `<span class="dim-sep">|</span>` +
         `<span class="dim-px">${w} \u00d7 ${h} px @ 300dpi</span>`;
     out.classList.remove('d-none');
@@ -1803,6 +1829,23 @@ function clearPreviewDims() {
 
 
 /**
+ * Width and length in mm of a brother_ql label identifier.
+ *
+ * Identifiers are millimetre sizes: "50" and "62" are continuous (no length),
+ * "62x29" is die-cut width x length. Returns null for anything unrecognised so
+ * callers fall back to the loaded roll rather than drawing a wrong one.
+ *
+ * @param {string} id - e.g. "50", "62x29"
+ * @returns {{width: number, length: number}|null}
+ */
+function labelSizeToMm(id) {
+    if (!id) return null;
+    const m = String(id).trim().match(/^(\d+)(?:x(\d+))?$/i);
+    if (!m) return null;
+    return { width: Number(m[1]), length: m[2] ? Number(m[2]) : 0 };
+}
+
+/**
  * Size the tape backdrop to the roll physically loaded, so the raster is shown
  * at true proportion against it.
  *
@@ -1819,12 +1862,20 @@ function clearPreviewDims() {
  * @param {HTMLImageElement} img - the loaded server-preview image
  */
 function sizeTapeToMedia(img) {
-    const tape = document.getElementById('preview-tape');
+    const tape = document.getElementById('preview-backing');
+    const sticker = document.getElementById('preview-sticker');
     if (!tape || !img || !img.naturalWidth) return;
 
-    const tapeMm = loadedMedia && loadedMedia.width;
+    // The roll the user is COMPOSING FOR, not the one in the machine. If the
+    // preview silently redrew itself at the loaded width, choosing 62mm while
+    // 50mm is loaded would show a 50mm label and contradict the selection. The
+    // media guard already reports that mismatch in words and blocks the print;
+    // the preview should not restate it by drawing the wrong label.
+    const chosen = labelSizeToMm(
+        typeof activeLabelSize === 'function' ? activeLabelSize() : null);
+    const tapeMm = (chosen && chosen.width) || (loadedMedia && loadedMedia.width);
     if (!tapeMm) {
-        tape.style.removeProperty('--tape-aspect');
+        if (sticker) sticker.style.removeProperty('--tape-aspect');
         return;
     }
 
@@ -1841,8 +1892,34 @@ function sizeTapeToMedia(img) {
     // Never collapse the box: a very short label still needs a visible strip of
     // tape, and aspect-ratio of 50/1 is unreadable.
     const shownFeedMm = Math.max(feedMm, tapeMm * 0.25);
-    tape.style.setProperty('--tape-aspect',
-        widthIsTape ? `${tapeMm} / ${shownFeedMm}` : `${shownFeedMm} / ${tapeMm}`);
+    if (sticker) {
+        sticker.style.setProperty('--tape-aspect',
+            widthIsTape ? `${tapeMm} / ${shownFeedMm}` : `${shownFeedMm} / ${tapeMm}`);
+    }
+
+    // A raster that spans the tape needs no outline: there is no blank tape to
+    // distinguish it from, and the tape's own edge already draws the boundary.
+    // Most labels are full-width, so this keeps the common case clean and marks
+    // only the case that was actually confusing -- a narrow mark on wide tape.
+    const acrossMm = widthIsTape ? rasterWmm : rasterHmm;
+    tape.classList.toggle('is-full-width', Math.abs(acrossMm - tapeMm) < 1);
+
+    // Continuous ("endless") tape has no length -- the roll simply keeps going,
+    // and the printer cuts wherever the label ends. Drawing a closed rectangle
+    // implies a fixed sheet, so fade the feed edge to show the tape continues.
+    // Die-cut rolls DO have a real edge there, so they keep the hard boundary.
+    // Feed is ALWAYS down the screen, never derived from the raster's shape.
+    //
+    // Tape leaves the printer one way regardless of how the artwork is rotated,
+    // and updateFeedIndicator already pins its arrow vertically for exactly
+    // that reason. Deriving the edge from the raster (as this first did) made
+    // the continuation flip sides when the label was rotated -- the tape
+    // appearing to change direction because the picture on it turned.
+    // Die-cut versus continuous follows the choice too, for the same reason.
+    const dieCutLength = chosen ? chosen.length
+        : (loadedMedia ? loadedMedia.length : 0);
+    tape.classList.toggle('is-endless', !dieCutLength);
+    tape.classList.toggle('is-diecut', !!dieCutLength);
 }
 
 /**
@@ -1851,11 +1928,14 @@ function sizeTapeToMedia(img) {
  */
 function clearServerPreview() {
     const serverImg = document.getElementById('preview-server');
-    const tape = document.getElementById('preview-tape');
-    if (tape) {
-        tape.classList.add('d-none');
-        tape.style.removeProperty('--tape-aspect');
-    }
+    const legend = document.getElementById('preview-legend');
+    if (legend) legend.classList.add('d-none');
+    const tape = document.getElementById('preview-backing');
+    if (tape) tape.classList.add('d-none');
+    // Clear the sticker's aspect so a stale roll shape is not reused when the
+    // next render arrives before sizeTapeToMedia has run.
+    const stickerEl = document.getElementById('preview-sticker');
+    if (stickerEl) stickerEl.style.removeProperty('--tape-aspect');
     if (serverImg) {
         serverImg.classList.add('d-none');
         // Use removeAttribute rather than src='' — an empty src makes the
@@ -1885,8 +1965,10 @@ function showServerPreview(dataUrl) {
     if (!serverImg) return;
     serverImg.src = dataUrl;
     serverImg.classList.remove('d-none');
-    const tape = document.getElementById('preview-tape');
+    const tape = document.getElementById('preview-backing');
     if (tape) tape.classList.remove('d-none');
+    const legend = document.getElementById('preview-legend');
+    if (legend) legend.classList.remove('d-none');
     if (serverImg.complete) {
         sizeTapeToMedia(serverImg);
     } else {

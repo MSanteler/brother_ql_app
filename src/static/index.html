@@ -807,6 +807,7 @@
                              rotate_mode, so it is positioned from JS. -->
                         <div class="preview-feed d-none" id="preview-feed" aria-hidden="true">
                             <span class="preview-feed-label">feed</span>
+                            <span class="preview-feed-mm" id="preview-feed-mm"></span>
                             <span class="preview-feed-line"></span>
                             <span class="preview-feed-arrow"></span>
                         </div>
@@ -816,10 +817,26 @@
                              like a thin label rather than a small mark -- the
                              unprinted tape either side is invisible. JS sets
                              the wrapper's aspect ratio from the loaded roll. -->
-                        <div id="preview-tape" class="preview-tape d-none" aria-hidden="true">
-                            <img id="preview-server" class="preview-server d-none" src="" alt="Rendered label preview">
+                        <!-- backing (liner roll) > sticker (the label) >
+                             raster (the printed area). All three to scale; JS
+                             sets the sticker's aspect from the loaded roll and
+                             flags endless vs die-cut. -->
+                        <div id="preview-backing" class="preview-backing d-none" aria-hidden="true">
+                            <div id="preview-sticker" class="preview-sticker">
+                                <img id="preview-server" class="preview-server d-none" src="" alt="Rendered label preview">
+                            </div>
                         </div>
                         <div class="preview-dims d-none" id="preview-dims" aria-live="polite"></div>
+                        <!-- Names the three layers. Without it the drawing is
+                             only legible to someone who already knows it. -->
+                        <div class="preview-legend d-none" id="preview-legend">
+                            <span class="legend-item" title="The liner roll. It has no ends -- it runs past the top and bottom of this view because the roll continues.">
+                                <span class="legend-swatch is-backing"></span>backing</span>
+                            <span class="legend-item" title="The label itself. On continuous tape it is cut square across the full tape width; die-cut labels have rounded corners and a fixed size.">
+                                <span class="legend-swatch is-label"></span>label</span>
+                            <span class="legend-item" title="The printed area. Often smaller than the label -- the gap between this and the label edge is blank paper.">
+                                <span class="legend-swatch is-raster"></span>printed</span>
+                        </div>
                         <div id="preview-text" class="preview-text d-none"></div>
                         <img id="preview-image" class="preview-image d-none" src="" alt="Image Preview">
                         <div id="preview-qrcode" class="preview-qrcode d-none"></div>
