@@ -1217,9 +1217,11 @@ class PrinterService:
         Modes:
           actual  font_size exactly as given. Content may overflow and crop; on
                   continuous tape it simply wraps and the label grows.
-          fit     shrink until the text fits the medium, and (lengthwise only)
-                  grow to fill it. This is the historical auto_fit behaviour,
-                  now opt-in.
+          fit     shrink until the text fits the medium. Never grows.
+          fill    lay the label out lengthwise and grow the text to fill the
+                  tape width. This is a SCALING choice, not an orientation one --
+                  the whole point of the mode is bigger text, so it belongs here
+                  rather than hidden behind rotate_mode.
           custom  font_size * scale_percent/100, then treated like `actual`.
 
         Backward compatibility: an explicit ``auto_fit`` still selects a mode, so
@@ -1237,9 +1239,10 @@ class PrinterService:
                 mode = "actual"
 
         mode = str(mode).lower()
-        if mode not in ("actual", "fit", "custom"):
+        if mode not in ("actual", "fit", "fill", "custom"):
             raise ValueError(
-                f"Invalid scale_mode: {mode!r}. Must be actual, fit, or custom."
+                f"Invalid scale_mode: {mode!r}. "
+                "Must be actual, fit, fill, or custom."
             )
 
         if mode == "custom":
@@ -1361,8 +1364,13 @@ class PrinterService:
             # LENGTHWISE_CANVAS_PX caps that unbounded direction so a long line
             # still wraps somewhere: 8x the tape width is roughly a 40cm label on
             # 50mm tape, past any sane label and far short of running the roll out.
+            # Lengthwise layout follows the SCALING choice, not the rotation.
+            # scale_mode="fill" means "make it big down the tape"; rotate_mode
+            # is still honoured for callers that predate scale_mode.
+            _mode_hint = str(settings.get("scale_mode") or "").lower()
+            _legacy_layout = str(settings.get("rotate_mode", "image")) == "layout"
             lengthwise = (rotate_quarter and not is_die_cut
-                          and str(settings.get("rotate_mode", "image")) == "layout")
+                          and (_mode_hint == "fill" or _legacy_layout))
             if lengthwise:
                 tape_width = width
                 width = min(LENGTHWISE_CANVAS_PX, tape_width * 8)
@@ -1410,13 +1418,20 @@ class PrinterService:
             # replaced the size you set.
             requested_font_size = font_size
             scale_mode, font_size = self._resolve_scale_mode(settings, font_size)
+            # Legacy callers set rotate_mode=layout with no scale_mode and
+            # expected the grow-to-fill behaviour, because it used to ride along
+            # with auto_fit. Honour that rather than silently no-opping on them.
+            if (lengthwise and scale_mode != "fill"
+                    and settings.get("scale_mode") is None
+                    and str(settings.get("rotate_mode", "image")) == "layout"):
+                scale_mode = "fill"
             if font_size != requested_font_size:
                 # Only `custom` changes the size here; re-render at the scaled
                 # size before any fitting logic looks at it.
                 font = ImageFont.truetype(self.font_path, font_size)
                 wrapped = wrap_all(font)
 
-            if scale_mode == "fit" and wrap:
+            if scale_mode in ("fit", "fill") and wrap:
                 if (is_die_cut or lengthwise) and label_height:
                     # Fixed physical height: shrink until the wrapped text fits
                     # inside it.
@@ -1447,7 +1462,7 @@ class PrinterService:
             # Without this the text keeps its original size and floats in the
             # middle of a much larger canvas, which is precisely the "rotation
             # does nothing useful" complaint this mode was added to fix.
-            if lengthwise and scale_mode == "fit" and wrap:
+            if lengthwise and scale_mode == "fill" and wrap:
                 while font_size < MAX_LENGTHWISE_FONT_SIZE:
                     candidate = ImageFont.truetype(self.font_path, font_size + 2)
                     candidate_lines = (
