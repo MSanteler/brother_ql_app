@@ -195,9 +195,6 @@ def _read_usb_printer_status_once(printer_uri: str, timeout_ms: int = 5000):
 # rendering a single line metres long.
 LENGTHWISE_CANVAS_PX = 4000
 
-# Upper bound when scaling text up to fill the tape in lengthwise mode. Without a
-# cap, a short string on wide tape would grow to absurd point sizes.
-MAX_LENGTHWISE_FONT_SIZE = 400
 
 
 def describe_media_mismatch(label_size: Optional[str], status: Optional[Dict[str, Any]]):
@@ -1218,10 +1215,6 @@ class PrinterService:
           actual  font_size exactly as given. Content may overflow and crop; on
                   continuous tape it simply wraps and the label grows.
           fit     shrink until the text fits the medium. Never grows.
-          fill    lay the label out lengthwise and grow the text to fill the
-                  tape width. This is a SCALING choice, not an orientation one --
-                  the whole point of the mode is bigger text, so it belongs here
-                  rather than hidden behind rotate_mode.
           custom  font_size * scale_percent/100, then treated like `actual`.
 
         Backward compatibility: an explicit ``auto_fit`` still selects a mode, so
@@ -1239,10 +1232,9 @@ class PrinterService:
                 mode = "actual"
 
         mode = str(mode).lower()
-        if mode not in ("actual", "fit", "fill", "custom"):
+        if mode not in ("actual", "fit", "custom"):
             raise ValueError(
-                f"Invalid scale_mode: {mode!r}. "
-                "Must be actual, fit, fill, or custom."
+                f"Invalid scale_mode: {mode!r}. Must be actual, fit, or custom."
             )
 
         if mode == "custom":
@@ -1418,22 +1410,13 @@ class PrinterService:
             # replaced the size you set.
             requested_font_size = font_size
             scale_mode, font_size = self._resolve_scale_mode(settings, font_size)
-            # Legacy callers set rotate_mode=layout and expected grow-to-fill,
-            # because it used to ride along with auto_fit.
-            #
-            # The test is `lengthwise`, NOT "did the caller omit scale_mode":
-            # scale_mode is a persisted setting, so it is merged into every
-            # request and is never absent. Checking for its absence made this
-            # branch dead code -- the UI checkbox silently did nothing.
-            if lengthwise and scale_mode not in ("fill", "custom"):
-                scale_mode = "fill"
             if font_size != requested_font_size:
                 # Only `custom` changes the size here; re-render at the scaled
                 # size before any fitting logic looks at it.
                 font = ImageFont.truetype(self.font_path, font_size)
                 wrapped = wrap_all(font)
 
-            if scale_mode in ("fit", "fill") and wrap:
+            if scale_mode == "fit" and wrap:
                 if (is_die_cut or lengthwise) and label_height:
                     # Fixed physical height: shrink until the wrapped text fits
                     # inside it.
@@ -1456,26 +1439,6 @@ class PrinterService:
                         font = ImageFont.truetype(self.font_path, font_size)
                     wrapped = wrap_all(font)
 
-            # Lengthwise mode exists to make the text BIGGER, so it also has to
-            # scale up -- auto_fit above only ever shrinks. The tape width is now
-            # the canvas height, and it is a hard budget, so grow the font until
-            # the wrapped block is about to overflow it and then step back.
-            #
-            # Without this the text keeps its original size and floats in the
-            # middle of a much larger canvas, which is precisely the "rotation
-            # does nothing useful" complaint this mode was added to fix.
-            if lengthwise and scale_mode == "fill" and wrap:
-                while font_size < MAX_LENGTHWISE_FONT_SIZE:
-                    candidate = ImageFont.truetype(self.font_path, font_size + 2)
-                    candidate_lines = (
-                        [w for line in lines
-                         for w in self._wrap_text_to_width(line, candidate, text_area)]
-                        if wrap else list(lines))
-                    ascent, descent = candidate.getmetrics()
-                    if 20 + len(candidate_lines) * (ascent + descent) > label_height:
-                        break
-                    font_size += 2
-                    font = candidate
                     wrapped = candidate_lines
 
             lines = wrapped

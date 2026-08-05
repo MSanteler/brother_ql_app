@@ -12,8 +12,7 @@ DEFAULT_SETTINGS = {
     "vertical_alignment": "top",  # top | middle | bottom (die-cut only)
     "rotate_mode": "image",  # image = rotate the render | layout = lay out lengthwise
     # How font_size is treated. actual = honour it exactly (content may crop);
-    # fit = shrink to fit; fill = lay out lengthwise and grow to the tape width;
-    # custom = font_size * scale_percent%.
+    # fit = shrink to fit; custom = font_size * scale_percent%.
     #
     # Defaults to "actual" deliberately: the previous behaviour re-derived
     # font_size whenever auto_fit was on, which was always -- it defaulted True

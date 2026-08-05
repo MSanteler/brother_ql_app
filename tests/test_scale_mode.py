@@ -66,12 +66,12 @@ class TestCustom:
 
 
 class TestValidation:
-    @pytest.mark.parametrize("mode", ["stretch", "shrink", "", "AUTO"])
+    @pytest.mark.parametrize("mode", ["fill", "stretch", "shrink", "", "AUTO"])
     def test_rejects_unknown_mode(self, mode):
         with pytest.raises(ValueError, match="scale_mode"):
             resolve({"scale_mode": mode}, 60)
 
-    @pytest.mark.parametrize("mode", ["actual", "fit", "fill", "custom"])
+    @pytest.mark.parametrize("mode", ["actual", "fit", "custom"])
     def test_accepts_known_modes(self, mode):
         assert resolve({"scale_mode": mode}, 60)[0] == mode
 
@@ -80,7 +80,7 @@ class TestValidation:
 
     def test_only_custom_scales(self):
         """Other modes must leave font_size untouched even with a percent set."""
-        for mode in ("actual", "fit", "fill"):
+        for mode in ("actual", "fit"):
             assert resolve({"scale_mode": mode, "scale_percent": 50}, 60)[1] == 60
 
 
@@ -135,19 +135,3 @@ class TestStatusRetry:
         monkeypatch.setattr(ps, "_read_usb_printer_status_once", ok)
         assert ps.read_usb_printer_status("usb://x") == {"media_width": 62}
         assert len(calls) == 1
-
-
-class TestFillMode:
-    """`fill` is a SCALING choice, not an orientation one.
-
-    "Fill tape width" exists to make text BIGGER down a long label. Hiding that
-    behind rotate_mode meant the control silently did nothing once font_size
-    stopped being auto-derived -- the grow loop only ran when auto_fit was on.
-    """
-
-    def test_fill_is_a_valid_mode(self):
-        assert resolve({"scale_mode": "fill"}, 60) == ("fill", 60)
-
-    def test_fill_does_not_pre_scale_font_size(self):
-        """Growing happens during layout, against the real tape budget."""
-        assert resolve({"scale_mode": "fill"}, 5)[1] == 5

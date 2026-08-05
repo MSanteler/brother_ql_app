@@ -151,10 +151,10 @@ class SettingsService:
                 "Must be top, middle or bottom.")
 
         if ("scale_mode" in settings_to_validate
-                and settings_to_validate["scale_mode"] not in ["actual", "fit", "fill", "custom"]):
+                and settings_to_validate["scale_mode"] not in ["actual", "fit", "custom"]):
             raise ValueError(
                 f"Invalid scale_mode value: {settings_to_validate['scale_mode']}. "
-                "Must be 'actual', 'fit', 'fill', or 'custom'.")
+                "Must be 'actual', 'fit', or 'custom'.")
 
         if "scale_percent" in settings_to_validate:
             _pct = settings_to_validate["scale_percent"]
