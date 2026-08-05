@@ -1196,6 +1196,18 @@ function readVerticalAlignment() {
 // place; call sites must not read #label-size / #rotate directly.
 
 /**
+ * The rotate mode for text on continuous tape.
+ *   "image"  -- rotate the finished render (keeps text size)
+ *   "layout" -- lay out lengthwise and scale up to fill the tape width
+ * @returns {string}
+ */
+function activeRotateMode() {
+    const el = document.getElementById('preview-rotate-mode');
+    const value = el ? el.value : 'image';
+    return ['image', 'layout'].includes(value) ? value : 'image';
+}
+
+/**
  * The label size the preview and any print from this screen should use.
  * Falls back to the saved setting when the override is absent (older cached
  * index.html) or empty.
@@ -1392,6 +1404,7 @@ function collectPreviewSettings() {
         printer_model: document.getElementById('printer-model').value,
         label_size: activeLabelSize(),
         rotate: activeRotate(),
+        rotate_mode: activeRotateMode(),
         threshold: parseFloat(document.getElementById('threshold').value),
         dither: document.getElementById('dither').value === 'true',
         red: document.getElementById('red').value === 'true',

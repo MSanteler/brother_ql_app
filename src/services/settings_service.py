@@ -23,6 +23,7 @@ except ImportError:
     DEFAULT_SETTINGS = {
         "printer_uri": "tcp://192.168.1.100", "printer_model": "QL-800", "label_size": "62",
         "font_size": 50, "alignment": "left", "vertical_alignment": "top",
+        "rotate_mode": "image",
         "rotate": 0, "threshold": 70.0,
         "dither": False, "compress": False, "red": False,
         "keep_alive_enabled": False, "keep_alive_interval": 60,
@@ -101,6 +102,7 @@ class SettingsService:
         type_checks = {
             "printer_uri": str, "printer_model": str, "label_size": str,
             "font_size": (int, float), "alignment": str, "vertical_alignment": str,
+            "rotate_mode": str,
             "rotate": (int, float),
             "threshold": (int, float), "dither": bool, "compress": bool, "red": bool,
             "keep_alive_enabled": bool, "keep_alive_interval": (int, float),
@@ -133,6 +135,12 @@ class SettingsService:
         # --- Value Checks ---
         if "alignment" in settings_to_validate and settings_to_validate["alignment"] not in ["left", "center", "right"]:
             raise ValueError(f"Invalid alignment value: {settings_to_validate['alignment']}")
+
+        if ("rotate_mode" in settings_to_validate
+                and settings_to_validate["rotate_mode"] not in ["image", "layout"]):
+            raise ValueError(
+                f"Invalid rotate_mode value: {settings_to_validate['rotate_mode']}. "
+                "Must be image or layout.")
 
         if ("vertical_alignment" in settings_to_validate
                 and settings_to_validate["vertical_alignment"] not in ["top", "middle", "bottom"]):
@@ -308,7 +316,7 @@ class SettingsService:
     # when omitted. keep_alive_*/ipp_port/printers are excluded (not per-print).
     _INHERITABLE_PRINT_KEYS = (
         "printer_uri", "printer_model", "label_size", "font_size", "alignment",
-        "vertical_alignment", "rotate", "threshold", "dither", "compress", "red", "copies",
+        "vertical_alignment", "rotate", "rotate_mode", "threshold", "dither", "compress", "red", "copies",
         "cut_mode", "dpi_600", "hq",
     )
 

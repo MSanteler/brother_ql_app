@@ -1434,6 +1434,20 @@ components:
           enum: [top, middle, bottom]
           default: top
           example: "middle"
+        rotate_mode:
+          type: string
+          description: >
+            How `rotate` is applied to text labels on CONTINUOUS tape.
+            "image" (default) rotates the finished render, which keeps the text
+            at its original size -- on continuous tape that yields a narrow strip
+            using only a sliver of the roll's width. "layout" instead lays the
+            text out transposed and scales it up to fill the tape width, so the
+            label prints lengthwise down the roll with large text. Die-cut labels
+            ignore this: their size is fixed, so the transpose is always required
+            and already happens.
+          enum: [image, layout]
+          default: image
+          example: "layout"
         rotate:
           type: integer
           description: Rotation angle in degrees
@@ -1530,6 +1544,15 @@ components:
           enum: [top, middle, bottom]
           example: "top"
           default: "top"
+        rotate_mode:
+          type: string
+          description: >
+            Default handling of rotation for text on continuous tape. "image"
+            rotates the finished render; "layout" lays it out lengthwise and
+            scales up to fill the tape width.
+          enum: [image, layout]
+          example: "image"
+          default: "image"
         rotate:
           type: integer
           description: Default rotation angle

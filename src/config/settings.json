@@ -5,6 +5,7 @@
     "font_size": 50,
     "alignment": "left",
     "vertical_alignment": "top",
+    "rotate_mode": "image",
     "rotate": 0,
     "threshold": 70.0,
     "dither": false,

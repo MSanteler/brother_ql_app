@@ -10,6 +10,7 @@ DEFAULT_SETTINGS = {
     "font_size": 50,
     "alignment": "left",
     "vertical_alignment": "top",  # top | middle | bottom (die-cut only)
+    "rotate_mode": "image",  # image = rotate the render | layout = lay out lengthwise
     "rotate": 0,
     "threshold": 70.0,
     "dither": False,

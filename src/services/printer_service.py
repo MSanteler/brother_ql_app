@@ -163,6 +163,17 @@ def read_usb_printer_status(printer_uri: str, timeout_ms: int = 5000):
             pass
 
 
+# Cap for the unbounded direction when laying text out lengthwise along
+# continuous tape (rotate_mode="layout"). Long enough for any real label -- 8x a
+# 50mm tape width is ~40cm -- while still forcing a wrap eventually rather than
+# rendering a single line metres long.
+LENGTHWISE_CANVAS_PX = 4000
+
+# Upper bound when scaling text up to fill the tape in lengthwise mode. Without a
+# cap, a short string on wide tape would grow to absurd point sizes.
+MAX_LENGTHWISE_FONT_SIZE = 400
+
+
 def describe_media_mismatch(label_size: Optional[str], status: Optional[Dict[str, Any]]):
     """Return why ``label_size`` cannot print on the reported media, else None.
 
@@ -1249,6 +1260,35 @@ class PrinterService:
             if is_die_cut and label_height and rotate_quarter:
                 width, label_height = label_height, width
 
+            # Continuous tape, quarter turn, rotate_mode="layout": print
+            # LENGTHWISE down the roll.
+            #
+            # The default ("image") rotates the finished render. On continuous
+            # tape that is nearly useless for text: the canvas is only as tall as
+            # the text needs (say 68px), so rotating gives a 68px-wide strip on a
+            # 554px-wide roll -- same size text, turned on its side, using a
+            # sliver of the tape. Rotating to get *bigger* text is the thing
+            # people actually reach for, and it is a different operation.
+            #
+            # In layout mode the canvas is transposed BEFORE the text is laid
+            # out: the tape width becomes the canvas height, and the length --
+            # unbounded on continuous tape -- becomes the width the text wraps
+            # to. After the quarter turn the result fills the tape across its
+            # full width and runs as far down the roll as the text needs.
+            #
+            # LENGTHWISE_CANVAS_PX caps that unbounded direction so a long line
+            # still wraps somewhere: 8x the tape width is roughly a 40cm label on
+            # 50mm tape, past any sane label and far short of running the roll out.
+            lengthwise = (rotate_quarter and not is_die_cut
+                          and str(settings.get("rotate_mode", "image")) == "layout")
+            if lengthwise:
+                tape_width = width
+                width = min(LENGTHWISE_CANVAS_PX, tape_width * 8)
+                # Height is pinned to the tape width so the text fills it once
+                # rotated, exactly as a die-cut label pins to its fixed height.
+                label_height = tape_width
+                is_die_cut = True  # pin the canvas; see the die-cut branch below
+
             font_size = int(settings.get("font_size", 50))
             alignment = settings.get("alignment", "left")
             # Vertical placement within the label. Only affects die-cut rolls,
@@ -1299,6 +1339,28 @@ class PrinterService:
                         font = ImageFont.truetype(self.font_path, font_size)
                     wrapped = wrap_all(font)
 
+            # Lengthwise mode exists to make the text BIGGER, so it also has to
+            # scale up -- auto_fit above only ever shrinks. The tape width is now
+            # the canvas height, and it is a hard budget, so grow the font until
+            # the wrapped block is about to overflow it and then step back.
+            #
+            # Without this the text keeps its original size and floats in the
+            # middle of a much larger canvas, which is precisely the "rotation
+            # does nothing useful" complaint this mode was added to fix.
+            if lengthwise and settings.get("auto_fit", True) and wrap:
+                while font_size < MAX_LENGTHWISE_FONT_SIZE:
+                    candidate = ImageFont.truetype(self.font_path, font_size + 2)
+                    candidate_lines = (
+                        [w for line in lines
+                         for w in self._wrap_text_to_width(line, candidate, text_area)]
+                        if wrap else list(lines))
+                    ascent, descent = candidate.getmetrics()
+                    if 20 + len(candidate_lines) * (ascent + descent) > label_height:
+                        break
+                    font_size += 2
+                    font = candidate
+                    wrapped = candidate_lines
+
             lines = wrapped
 
             # Create a dummy image to calculate text dimensions
@@ -1336,6 +1398,15 @@ class PrinterService:
             # than inventing a label the printer cannot cut.
             if is_die_cut and label_height:
                 total_height = label_height
+
+            # Lengthwise mode borrowed the die-cut branch to pin the canvas to the
+            # tape width, but its OTHER dimension is continuous tape and so is not
+            # fixed -- LENGTHWISE_CANVAS_PX was only ever a wrapping bound. Trim
+            # it back to the text, or every label would run the full 4000px and
+            # waste a third of a metre of tape per print.
+            if lengthwise and line_metrics:
+                widest = max(w for _, w in line_metrics)
+                width = min(width, widest + 20)  # keep the 10px side margins
 
             image = Image.new("RGB", (width, total_height), "white")
             draw = ImageDraw.Draw(image)

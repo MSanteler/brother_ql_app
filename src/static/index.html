@@ -779,6 +779,16 @@
                                 <option value="270">270°</option>
                             </select>
                         </div>
+                        <!-- Only meaningful with a quarter turn on continuous
+                             tape, so it is shown only then (see
+                             updateRotateModeAvailability). -->
+                        <div class="output-field d-none" id="preview-rotate-mode-field">
+                            <label class="output-lbl" for="preview-rotate-mode">Turned text</label>
+                            <select id="preview-rotate-mode" class="output-select">
+                                <option value="image">Keep size</option>
+                                <option value="layout">Fill tape width</option>
+                            </select>
+                        </div>
                         <div class="output-loaded" id="preview-loaded-media" aria-live="polite">
                             <span class="output-loaded-dot" id="preview-loaded-dot"></span>
                             <span id="preview-loaded-text">Checking printer…</span>

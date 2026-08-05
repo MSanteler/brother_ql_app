@@ -454,6 +454,7 @@ function setupOutputBar() {
         if (typeof updateVerticalAlignAvailability === 'function') {
             updateVerticalAlignAvailability();
         }
+        updateRotateModeAvailability();
         if (typeof updateOutputBar === 'function') updateOutputBar();
         const mode = getActiveComposeMode();
         if (mode && typeof requestServerPreview === 'function') {
@@ -463,6 +464,9 @@ function setupOutputBar() {
 
     outLabel.addEventListener('change', onChange);
     if (outRotate) outRotate.addEventListener('change', onChange);
+    const outMode = document.getElementById('preview-rotate-mode');
+    if (outMode) outMode.addEventListener('change', onChange);
+    updateRotateModeAvailability();
     if (matchBtn && typeof matchLoadedMedia === 'function') {
         matchBtn.addEventListener('click', matchLoadedMedia);
     }
@@ -495,6 +499,29 @@ function setupOutputBar() {
         refreshLoadedMedia();
         setInterval(refreshLoadedMedia, 30000);
     }
+}
+
+
+/**
+ * Show the "Turned text" control only where it changes anything: a quarter turn
+ * (90/270) on CONTINUOUS tape.
+ *
+ * At 0/180 there is nothing to turn. On die-cut the label size is fixed, so the
+ * transpose is mandatory and already happens -- offering a choice there would
+ * imply one exists.
+ */
+function updateRotateModeAvailability() {
+    const field = document.getElementById('preview-rotate-mode-field');
+    const rotateEl = document.getElementById('preview-rotate');
+    const labelEl = document.getElementById('preview-label-size')
+        || document.getElementById('label-size');
+    if (!field || !rotateEl || !labelEl || !labelEl.options.length) return;
+
+    const quarter = [90, 270].includes(parseInt(rotateEl.value, 10));
+    const option = labelEl.options[labelEl.selectedIndex];
+    const isDieCut = !!option && /die-cut/i.test(option.textContent || '');
+
+    field.classList.toggle('d-none', !(quarter && !isDieCut));
 }
 
 /**
