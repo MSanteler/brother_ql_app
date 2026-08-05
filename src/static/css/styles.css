@@ -519,15 +519,37 @@ body.dark-mode .btn-print { color: #06222B; }
    .preview-text (white card, shadow), but renders the exact 1-bit print
    output crisply. This is the authoritative preview: what it shows is what
    the printer receives. */
-.preview-server {
-    display: block;
+/* The TAPE, not the raster, is what looks like a label.
+   
+   The preview used to style the rendered PNG itself as the label -- white
+   background, shadow, rounded corners. That is misleading whenever the raster
+   is narrower than the roll: a 27px mark on 554px tape rendered as a thin white
+   sliver, when physically it is a small mark with 45mm of blank tape either
+   side. The image was right and the impression it gave was wrong.
+   
+   Now the wrapper carries the label styling and is sized to the real roll (JS
+   sets --tape-aspect from the loaded media), and the raster sits inside it at
+   true proportion. */
+.preview-tape {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     background: var(--label-bg);
     border-radius: 6px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.06);
     max-width: 100%;
     max-height: 60vh;
-    object-fit: contain;
     padding: 6px;
+    /* Set from JS as width/height of the tape in mm. Falls back to letting the
+       image size the box, which is the old behaviour, if the roll is unknown. */
+    aspect-ratio: var(--tape-aspect, auto);
+}
+
+.preview-server {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
     image-rendering: crisp-edges;
     image-rendering: pixelated;
 }

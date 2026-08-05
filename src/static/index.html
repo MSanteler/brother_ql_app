@@ -810,7 +810,15 @@
                             <span class="preview-feed-line"></span>
                             <span class="preview-feed-arrow"></span>
                         </div>
-                        <img id="preview-server" class="preview-server d-none" src="" alt="Rendered label preview">
+                        <!-- The raster sits ON the tape, at true proportion.
+                             Without this the preview shows only what is handed
+                             to the printer, so a small mark on wide tape looks
+                             like a thin label rather than a small mark -- the
+                             unprinted tape either side is invisible. JS sets
+                             the wrapper's aspect ratio from the loaded roll. -->
+                        <div id="preview-tape" class="preview-tape d-none" aria-hidden="true">
+                            <img id="preview-server" class="preview-server d-none" src="" alt="Rendered label preview">
+                        </div>
                         <div class="preview-dims d-none" id="preview-dims" aria-live="polite"></div>
                         <div id="preview-text" class="preview-text d-none"></div>
                         <img id="preview-image" class="preview-image d-none" src="" alt="Image Preview">

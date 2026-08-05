@@ -1801,12 +1801,61 @@ function clearPreviewDims() {
     if (feed) feed.classList.add('d-none');
 }
 
+
+/**
+ * Size the tape backdrop to the roll physically loaded, so the raster is shown
+ * at true proportion against it.
+ *
+ * The point is that the printed area and the TAPE are different things. A
+ * narrow raster on wide tape is a small mark with blank tape either side, not a
+ * narrow label -- and the old preview, which styled the raster itself as the
+ * label, made those two look identical. That is the single most confusing thing
+ * about rotation: turning text 90 degrees produces a genuinely narrow raster,
+ * and it used to look like the label had become a sliver.
+ *
+ * Falls back to sizing from the image (the previous behaviour) when the roll is
+ * unknown -- an unreadable printer must not blank the preview.
+ *
+ * @param {HTMLImageElement} img - the loaded server-preview image
+ */
+function sizeTapeToMedia(img) {
+    const tape = document.getElementById('preview-tape');
+    if (!tape || !img || !img.naturalWidth) return;
+
+    const tapeMm = loadedMedia && loadedMedia.width;
+    if (!tapeMm) {
+        tape.style.removeProperty('--tape-aspect');
+        return;
+    }
+
+    // The raster's own long axis, in mm, is how far it feeds down the roll.
+    const rasterWmm = img.naturalWidth / PX_PER_MM;
+    const rasterHmm = img.naturalHeight / PX_PER_MM;
+
+    // Tape width is fixed; the feed direction is whichever axis is not the tape
+    // width. Compare both against the known roll rather than assuming the
+    // raster's wider side is the tape -- rotation makes that assumption wrong.
+    const widthIsTape = Math.abs(rasterWmm - tapeMm) < Math.abs(rasterHmm - tapeMm);
+    const feedMm = widthIsTape ? rasterHmm : rasterWmm;
+
+    // Never collapse the box: a very short label still needs a visible strip of
+    // tape, and aspect-ratio of 50/1 is unreadable.
+    const shownFeedMm = Math.max(feedMm, tapeMm * 0.25);
+    tape.style.setProperty('--tape-aspect',
+        widthIsTape ? `${tapeMm} / ${shownFeedMm}` : `${shownFeedMm} / ${tapeMm}`);
+}
+
 /**
  * Hide the server preview image and clear its source. The client preview /
  * placeholder underneath then becomes visible again.
  */
 function clearServerPreview() {
     const serverImg = document.getElementById('preview-server');
+    const tape = document.getElementById('preview-tape');
+    if (tape) {
+        tape.classList.add('d-none');
+        tape.style.removeProperty('--tape-aspect');
+    }
     if (serverImg) {
         serverImg.classList.add('d-none');
         // Use removeAttribute rather than src='' — an empty src makes the
@@ -1836,6 +1885,13 @@ function showServerPreview(dataUrl) {
     if (!serverImg) return;
     serverImg.src = dataUrl;
     serverImg.classList.remove('d-none');
+    const tape = document.getElementById('preview-tape');
+    if (tape) tape.classList.remove('d-none');
+    if (serverImg.complete) {
+        sizeTapeToMedia(serverImg);
+    } else {
+        serverImg.addEventListener('load', () => sizeTapeToMedia(serverImg), {once: true});
+    }
 
     // naturalWidth/Height are only meaningful once decoded.
     if (serverImg.complete) {
