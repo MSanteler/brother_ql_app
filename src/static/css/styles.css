@@ -731,6 +731,63 @@ body.dark-mode .btn-print { color: #06222B; }
     border-color: transparent transparent transparent currentColor;
 }
 
+/* ===== Canva browser =====
+   A thumbnail grid rather than a list: these are visual designs, and Canva gives
+   us a free thumbnail per item, so showing them costs nothing. */
+.canva-folder-row { max-width: 420px; }
+.canva-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+.canva-card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel-2);
+    overflow: hidden;
+}
+.canva-card-thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: contain;
+    background: var(--label-bg);
+    border-bottom: 1px solid var(--border-soft);
+}
+.canva-card-thumb.is-missing {
+    display: grid;
+    place-items: center;
+    color: var(--muted-dim);
+    font-size: 22px;
+}
+.canva-card-body { padding: 9px 11px 11px; display: flex; flex-direction: column; gap: 8px; }
+.canva-card-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+}
+.canva-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.canva-card-actions .btn-ghost { flex: 1 1 auto; justify-content: center; }
+.canva-card.is-busy { opacity: 0.6; pointer-events: none; }
+
+/* Configuration / authorization problems, which are the normal reason this tab
+   shows nothing. Stated inline rather than as a toast so it does not vanish. */
+.canva-notice {
+    margin-top: 14px;
+    padding: 11px 13px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.45;
+}
+.canva-notice a { color: var(--accent); }
+
 .preview-qrcode { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .preview-qrcode img { display: block; max-width: 100%; height: auto; image-rendering: pixelated; }
 .preview-qrcode .qr-text { font-weight: 600; line-height: 1.2; word-break: break-word; }

@@ -417,11 +417,63 @@ function setupEventListeners() {
     // ---- Output controls under the preview (label size + rotation) ----
     setupOutputBar();
 
+    // ---- Canva browser ----
+    setupCanva();
+
     // ---- Print queue wiring (polling + actions) ----
     setupQueue();
 
     // ---- Console layout wiring (sidebar drawer + preview relocation) ----
     setupConsoleLayout();
+}
+
+
+/**
+ * Wire the Canva tab: folder picker, refresh, and the per-card actions.
+ *
+ * Card buttons are delegated from the grid because the cards are re-rendered on
+ * every listing -- binding per button would leak listeners.
+ */
+function setupCanva() {
+    const folder = document.getElementById('canva-folder');
+    const refresh = document.getElementById('canva-refresh');
+    const grid = document.getElementById('canva-grid');
+
+    if (folder && typeof loadCanvaDesigns === 'function') {
+        folder.addEventListener('change', loadCanvaDesigns);
+    }
+    if (refresh) {
+        refresh.addEventListener('click', () => {
+            if (typeof loadCanvaFolders === 'function') loadCanvaFolders();
+            if (typeof loadCanvaDesigns === 'function') loadCanvaDesigns();
+        });
+    }
+    if (grid) {
+        grid.addEventListener('click', event => {
+            const button = event.target.closest('[data-canva-action]');
+            if (!button) return;
+            const action = button.getAttribute('data-canva-action');
+            const designId = button.getAttribute('data-design-id');
+            if (!designId) return;
+            if (action === 'print' && typeof printCanvaDesign === 'function') {
+                printCanvaDesign(designId);
+            } else if (action === 'open' && typeof openCanvaDesign === 'function') {
+                openCanvaDesign(designId);
+            }
+        });
+    }
+
+    // Decide whether to show the tab at all, then populate the picker once it is
+    // known to be usable.
+    if (typeof initCanvaTab === 'function') {
+        initCanvaTab().then(() => {
+            const navItem = document.getElementById('canva-tab');
+            if (navItem && !navItem.classList.contains('d-none') &&
+                typeof loadCanvaFolders === 'function') {
+                loadCanvaFolders();
+            }
+        });
+    }
 }
 
 /**

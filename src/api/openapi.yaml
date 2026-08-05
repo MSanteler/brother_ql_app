@@ -1039,6 +1039,41 @@ paths:
                         thumbnail: { type: string }
                         edit_url: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
+  /canva/export:
+    post:
+      summary: Export a Canva design without printing
+      description: >
+        Exports the design and returns it as a PNG data URL, for loading into the
+        image composer to adjust before printing. Nothing is queued and nothing
+        is printed, so there is no media guard -- composing for a roll you are
+        about to load is the point.
+      operationId: api.canva_controller.export_canva_design
+      tags:
+        - canva
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [design_id]
+              properties:
+                design_id: { type: string }
+                title: { type: string }
+      responses:
+        '200':
+          description: Exported image
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  filename: { type: string }
+                  image:
+                    type: string
+                    description: data:image/png;base64,...
+        '400': { $ref: '#/components/responses/BadRequest' }
   /canva/print:
     post:
       summary: Print a Canva design

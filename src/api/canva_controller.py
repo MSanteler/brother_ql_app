@@ -11,6 +11,7 @@ Listing costs nothing. Canva returns a thumbnail URL with folder items, so the
 browser shows designs without exporting them; only printing spends export quota.
 """
 
+import base64
 import os
 import uuid
 from typing import Any, Dict
@@ -160,6 +161,41 @@ def print_canva_design(body: Dict[str, Any]) -> Dict[str, Any]:
         "success": True,
         "job_id": job_id,
         "message": "Print job queued",
+    }
+
+
+def export_canva_design(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Export a design WITHOUT printing it, for editing before printing.
+
+    "Open in the composer" must not print. The queue's pause is global, so
+    queueing-without-running is not available per job -- and a paused queue would
+    still print the moment it resumed. So this exports and returns the PNG as a
+    data URL, and the UI loads it into the image composer like any other file.
+
+    No media guard here: nothing is printed, and refusing to *show* a design
+    because the wrong roll is loaded would defeat the point of composing for a
+    roll you are about to load.
+    """
+    design_id = (body or {}).get("design_id")
+    if not design_id:
+        raise ValidationError("design_id is required", "design_id")
+
+    try:
+        image_bytes = canva_service.export_design_png(design_id)
+    except CanvaNotConfigured as exc:
+        raise ValidationError(str(exc), "canva_broker_url") from exc
+    except CanvaNotConnected as exc:
+        raise PrinterError(str(exc)) from exc
+    except Exception as exc:
+        logger.error("Canva export failed", design_id=design_id,
+                     error=str(exc), exc_info=True)
+        raise PrinterError(f"Canva export failed: {exc}") from exc
+
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return {
+        "success": True,
+        "filename": _export_filename((body or {}).get("title") or "canva-design"),
+        "image": f"data:image/png;base64,{encoded}",
     }
 
 

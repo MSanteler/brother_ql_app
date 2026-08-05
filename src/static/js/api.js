@@ -70,6 +70,10 @@ async function loadSettings() {
         document.getElementById('text-alignment').value = settings.alignment || 'left';
         const valignEl = document.getElementById('text-vertical-alignment');
         if (valignEl) valignEl.value = settings.vertical_alignment || 'top';
+        const brokerUrlEl = document.getElementById('canva-broker-url');
+        if (brokerUrlEl) brokerUrlEl.value = settings.canva_broker_url || '';
+        const brokerTokenEl = document.getElementById('canva-broker-token');
+        if (brokerTokenEl) brokerTokenEl.value = settings.canva_broker_token || '';
         document.getElementById('rotate').value = settings.rotate || '0';
         document.getElementById('threshold').value = settings.threshold || '70';
         document.getElementById('dither').value = settings.dither ? 'true' : 'false';
@@ -1141,6 +1145,8 @@ async function handleSaveSettings(event) {
                 alignment: alignment,
                 vertical_alignment: verticalAlignment,
                 rotate: parseInt(rotate),
+                canva_broker_url: (document.getElementById('canva-broker-url') || {}).value || '',
+                canva_broker_token: (document.getElementById('canva-broker-token') || {}).value || '',
                 threshold: parseFloat(threshold),
                 dither: dither,
                 red: red,
@@ -1188,6 +1194,296 @@ function readVerticalAlignment() {
     const el = document.getElementById('text-vertical-alignment');
     const value = el ? el.value : 'top';
     return ['top', 'middle', 'bottom'].includes(value) ? value : 'top';
+}
+
+// ===================== Canva browser ========================================
+//
+// Lists designs from a Canva folder and prints one. There is no local copy, no
+// sync and no import step: a design is exported only when it is printed, and the
+// resulting job behaves exactly like an uploaded image (reprint, open in the
+// composer) because that is literally what the backend queues.
+//
+// Browsing costs no export quota -- Canva returns a thumbnail URL per item.
+
+// Designs currently listed, by id, so an action can find its design without
+// re-reading the DOM.
+let canvaDesigns = {};
+
+/**
+ * Show or hide the Canva nav item based on whether the feature is usable, and
+ * surface why when it is not.
+ *
+ * Called on load. A tab that is present but always errors is worse than no tab,
+ * so it stays hidden until the backend says Canva is at least configured.
+ */
+async function initCanvaTab() {
+    const navItem = document.getElementById('canva-tab');
+    if (!navItem) return;
+
+    let status;
+    try {
+        const response = await fetch('/api/v1/canva/status');
+        status = response.ok ? await response.json() : null;
+    } catch (error) {
+        status = null;
+    }
+
+    if (!status || !status.configured) {
+        navItem.classList.add('d-none');
+        return;
+    }
+
+    navItem.classList.remove('d-none');
+
+    // Configured but not authorized is worth showing: the fix is a one-time
+    // visit to the broker's /auth, and hiding the tab would give no clue.
+    if (!status.connected) {
+        showCanvaNotice(status.message
+            || 'Canva is configured but not authorized yet.');
+    }
+}
+
+/**
+ * Display an inline notice in the Canva panel (configuration/auth problems).
+ * @param {string} message
+ */
+function showCanvaNotice(message) {
+    const notice = document.getElementById('canva-notice');
+    if (!notice) return;
+    notice.textContent = message;
+    notice.classList.remove('d-none');
+}
+
+function clearCanvaNotice() {
+    const notice = document.getElementById('canva-notice');
+    if (notice) notice.classList.add('d-none');
+}
+
+/**
+ * Populate the folder picker. Canva has no "list all designs" endpoint, so a
+ * folder has to be chosen before anything can be listed.
+ */
+async function loadCanvaFolders() {
+    const select = document.getElementById('canva-folder');
+    if (!select) return;
+
+    try {
+        const response = await fetch('/api/v1/canva/folders');
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            showCanvaNotice(body.message || 'Could not list Canva folders.');
+            return;
+        }
+        const body = await response.json();
+        const folders = body.folders || [];
+
+        select.innerHTML = '<option value="">Select a folder…</option>' +
+            folders.map(f =>
+                `<option value="${escapeHtml(f.id)}">${escapeHtml(f.name)}</option>`
+            ).join('');
+
+        if (!folders.length) {
+            showCanvaNotice('No folders found in your Canva account.');
+        } else {
+            clearCanvaNotice();
+        }
+    } catch (error) {
+        showCanvaNotice(`Could not list Canva folders: ${error.message}`);
+    }
+}
+
+/**
+ * List the designs in the selected folder and render the grid.
+ */
+async function loadCanvaDesigns() {
+    const select = document.getElementById('canva-folder');
+    const grid = document.getElementById('canva-grid');
+    if (!select || !grid) return;
+
+    const folderId = select.value;
+    if (!folderId) {
+        canvaDesigns = {};
+        grid.innerHTML = '<div class="queue-empty"><i class="bi bi-palette"></i>' +
+            '<p>Pick a folder to see its designs</p></div>';
+        return;
+    }
+
+    grid.innerHTML = '<div class="d-flex justify-content-center py-4">' +
+        '<div class="spinner-border text-primary" role="status">' +
+        '<span class="visually-hidden">Loading…</span></div></div>';
+
+    try {
+        const response = await fetch(
+            `/api/v1/canva/designs?folder_id=${encodeURIComponent(folderId)}`);
+        if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            grid.innerHTML = '';
+            showCanvaNotice(body.message || 'Could not list designs.');
+            return;
+        }
+        const body = await response.json();
+        renderCanvaDesigns(body.designs || []);
+        clearCanvaNotice();
+    } catch (error) {
+        grid.innerHTML = '';
+        showCanvaNotice(`Could not list designs: ${error.message}`);
+    }
+}
+
+/**
+ * Render the design grid.
+ * @param {Array} designs
+ */
+function renderCanvaDesigns(designs) {
+    const grid = document.getElementById('canva-grid');
+    if (!grid) return;
+
+    canvaDesigns = {};
+    designs.forEach(d => { canvaDesigns[d.id] = d; });
+
+    if (!designs.length) {
+        grid.innerHTML = '<div class="queue-empty"><i class="bi bi-palette"></i>' +
+            '<p>No designs in this folder</p></div>';
+        return;
+    }
+
+    grid.innerHTML = designs.map(d => {
+        const id = escapeHtml(d.id);
+        const title = escapeHtml(d.title || 'Untitled');
+        // Thumbnail URLs are short-lived, so they are used as-is and never
+        // cached. A missing one is normal, not an error.
+        const thumb = d.thumbnail
+            ? `<img class="canva-card-thumb" src="${escapeHtml(d.thumbnail)}" alt="" loading="lazy">`
+            : '<div class="canva-card-thumb is-missing"><i class="bi bi-image"></i></div>';
+        const edit = d.edit_url
+            ? `<a class="btn-ghost btn-sm" href="${escapeHtml(d.edit_url)}" target="_blank" rel="noopener noreferrer" title="Edit in Canva"><i class="bi bi-box-arrow-up-right"></i></a>`
+            : '';
+        return `
+            <div class="canva-card" data-design-id="${id}">
+              ${thumb}
+              <div class="canva-card-body">
+                <div class="canva-card-title">${title}</div>
+                <div class="canva-card-actions">
+                  <button type="button" class="btn-ghost btn-sm" data-canva-action="print" data-design-id="${id}">
+                    <i class="bi bi-printer"></i> Print
+                  </button>
+                  <button type="button" class="btn-ghost btn-sm" data-canva-action="open" data-design-id="${id}">
+                    <i class="bi bi-pencil-square"></i> Open
+                  </button>
+                  ${edit}
+                </div>
+              </div>
+            </div>`;
+    }).join('');
+}
+
+/**
+ * Export a design and queue it for printing, using the current output settings.
+ * @param {string} designId
+ */
+async function printCanvaDesign(designId) {
+    const design = canvaDesigns[designId];
+    const card = document.querySelector(`.canva-card[data-design-id="${designId}"]`);
+    if (card) card.classList.add('is-busy');
+
+    try {
+        const response = await fetch('/api/v1/canva/print', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                design_id: designId,
+                title: design ? design.title : undefined,
+                settings: collectPreviewSettings(),
+            }),
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            // The media guard lives here too: a mismatched roll is rejected
+            // before the export is spent, and its message names the fix.
+            showNotification(body.message || 'Could not print design', 'error');
+            return;
+        }
+        showNotification(
+            `Queued "${design ? design.title : 'design'}" for printing`, 'success');
+        if (typeof refreshJobs === 'function') refreshJobs();
+    } catch (error) {
+        showNotification(`Could not print design: ${error.message}`, 'error');
+    } finally {
+        if (card) card.classList.remove('is-busy');
+    }
+}
+
+/**
+ * Export a design and load it into the image composer WITHOUT printing, so it
+ * can be adjusted first.
+ *
+ * Uses /canva/export rather than /canva/print: the queue has only a global
+ * pause, so there is no way to enqueue a job that will not eventually run.
+ * Opening must never print.
+ * @param {string} designId
+ */
+async function openCanvaDesign(designId) {
+    const design = canvaDesigns[designId];
+    const card = document.querySelector(`.canva-card[data-design-id="${designId}"]`);
+    if (card) card.classList.add('is-busy');
+
+    try {
+        const response = await fetch('/api/v1/canva/export', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                design_id: designId,
+                title: design ? design.title : undefined,
+            }),
+        });
+        const body = await response.json().catch(() => ({}));
+
+        if (!response.ok || !body.image) {
+            showNotification(body.message || 'Could not export design', 'error');
+            return;
+        }
+
+        // Hand the PNG to the image tab as if it had been picked from disk, so
+        // the existing preview/print path takes over unchanged.
+        const loaded = await loadDataUrlIntoInput(
+            body.image, 'image-input', body.filename || 'canva-design.png');
+        if (!loaded) {
+            showNotification('Could not load the design into the composer', 'error');
+            return;
+        }
+        activateComposeTab('image-tab');
+        dispatchOn('image-input', 'change');
+        showNotification(
+            `Opened "${design ? design.title : 'design'}" in the composer`, 'success');
+    } catch (error) {
+        showNotification(`Could not open design: ${error.message}`, 'error');
+    } finally {
+        if (card) card.classList.remove('is-busy');
+    }
+}
+
+/**
+ * Put a data URL into a file input as if the user had chosen it.
+ * @param {string} dataUrl
+ * @param {string} inputId
+ * @param {string} filename
+ * @returns {Promise<boolean>} whether the input now holds the file
+ */
+async function loadDataUrlIntoInput(dataUrl, inputId, filename) {
+    const input = document.getElementById(inputId);
+    if (!input) return false;
+    try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const file = new File([blob], filename, { type: blob.type || 'image/png' });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        return true;
+    } catch (error) {
+        console.error('Error loading data URL into input:', error);
+        return false;
+    }
 }
 
 // ===================== Output overrides (label size / rotation) ==============

@@ -56,6 +56,9 @@
 
                 <div class="nav-label nav-label--bottom">System</div>
                 <nav class="nav-list" role="tablist">
+                    <button class="nav-item d-none" id="canva-tab" data-bs-toggle="tab" data-bs-target="#canva-panel" type="button" role="tab" aria-controls="canva-panel" aria-selected="false">
+                        <i class="bi bi-palette"></i><span>Canva</span>
+                    </button>
                     <button class="nav-item" id="queue-tab" data-bs-toggle="tab" data-bs-target="#queue-panel" type="button" role="tab" aria-controls="queue-panel" aria-selected="false">
                         <i class="bi bi-list-task"></i><span>Queue</span>
                         <span id="queue-badge" class="queue-badge" hidden>0</span>
@@ -514,6 +517,39 @@
                 </div>
 
                 <!-- ================= QUEUE ================= -->
+                <!-- ================= CANVA ================= -->
+                <div class="tab-pane fade" id="canva-panel" role="tabpanel" aria-labelledby="canva-tab">
+                    <div class="settings-wrap">
+                        <section class="panel">
+                            <div class="panel-head">
+                                <h2>Canva</h2>
+                                <div class="queue-head-actions">
+                                    <span class="tag">designs</span>
+                                    <button type="button" id="canva-refresh" class="btn-ghost btn-sm">
+                                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="panel-body">
+                                <div class="field canva-folder-row">
+                                    <label class="lbl" for="canva-folder">Folder</label>
+                                    <select id="canva-folder"></select>
+                                    <div class="hint">
+                                        Browsing is free &mdash; only printing exports a design.
+                                    </div>
+                                </div>
+                                <div id="canva-notice" class="canva-notice d-none"></div>
+                                <div id="canva-grid" class="canva-grid">
+                                    <div class="queue-empty">
+                                        <i class="bi bi-palette"></i>
+                                        <p>Pick a folder to see its designs</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+
                 <div class="tab-pane fade" id="queue-panel" role="tabpanel" aria-labelledby="queue-tab">
                     <div class="settings-wrap">
                         <section class="panel">
@@ -674,6 +710,26 @@
                                                 <option value="false">Disabled</option>
                                                 <option value="true">Enabled</option>
                                             </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="section-sep"></div>
+                                    <div class="section-cap">Canva</div>
+
+                                    <div class="grid-2">
+                                        <div class="field">
+                                            <label class="lbl" for="canva-broker-url">Label library URL</label>
+                                            <input type="text" id="canva-broker-url" class="mono" placeholder="https://canva-labels.example.com">
+                                            <div class="hint">
+                                                Service holding the Canva authorization. Leave blank to hide the Canva tab.
+                                            </div>
+                                        </div>
+                                        <div class="field">
+                                            <label class="lbl" for="canva-broker-token">Library access token</label>
+                                            <input type="password" id="canva-broker-token" class="mono" placeholder="shared token" autocomplete="off">
+                                            <div class="hint">
+                                                Sent as X-Access-Token. Canva's own client secret stays on that service.
+                                            </div>
                                         </div>
                                     </div>
 
