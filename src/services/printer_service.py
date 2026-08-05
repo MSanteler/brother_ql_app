@@ -1418,12 +1418,14 @@ class PrinterService:
             # replaced the size you set.
             requested_font_size = font_size
             scale_mode, font_size = self._resolve_scale_mode(settings, font_size)
-            # Legacy callers set rotate_mode=layout with no scale_mode and
-            # expected the grow-to-fill behaviour, because it used to ride along
-            # with auto_fit. Honour that rather than silently no-opping on them.
-            if (lengthwise and scale_mode != "fill"
-                    and settings.get("scale_mode") is None
-                    and str(settings.get("rotate_mode", "image")) == "layout"):
+            # Legacy callers set rotate_mode=layout and expected grow-to-fill,
+            # because it used to ride along with auto_fit.
+            #
+            # The test is `lengthwise`, NOT "did the caller omit scale_mode":
+            # scale_mode is a persisted setting, so it is merged into every
+            # request and is never absent. Checking for its absence made this
+            # branch dead code -- the UI checkbox silently did nothing.
+            if lengthwise and scale_mode not in ("fill", "custom"):
                 scale_mode = "fill"
             if font_size != requested_font_size:
                 # Only `custom` changes the size here; re-render at the scaled
