@@ -1782,6 +1782,44 @@ function updatePreviewDims(img) {
         `<span class="dim-px">${w} \u00d7 ${h} px @ 300dpi</span>`;
     out.classList.remove('d-none');
     updateFeedIndicator(img);
+    warnIfOverflowsDieCut(wmm, hmm);
+}
+
+/**
+ * Warn when a render will not fit the chosen die-cut label.
+ *
+ * Die-cut stock is a fixed size in BOTH axes. The image path scales artwork to
+ * the label WIDTH and lets height follow the aspect ratio, which is right for
+ * continuous tape and wrong here: a rotated or tall image produces a canvas
+ * longer than the label, spanning several stickers. convert() then rejects it
+ * with "Bad image dimensions", so nothing misprints -- but the preview drew the
+ * oversized label as though it were real, which is the part worth fixing.
+ *
+ * Deliberately only a warning. Silently resizing to fit would be inventing a
+ * layout the user did not ask for, and the print already fails safely.
+ *
+ * @param {number} wmm - rendered width in mm
+ * @param {number} hmm - rendered height in mm
+ */
+function warnIfOverflowsDieCut(wmm, hmm) {
+    const el = document.getElementById('preview-overflow-warning');
+    if (!el) return;
+
+    const chosen = labelSizeToMm(
+        typeof activeLabelSize === 'function' ? activeLabelSize() : null);
+    if (!chosen || !chosen.length) {
+        el.classList.add('d-none');
+        return;
+    }
+
+    // 1mm of slack for rounding; the render is reported in whole mm.
+    const overflows = (wmm > chosen.width + 1) || (hmm > chosen.length + 1);
+    el.textContent = overflows
+        ? `This render is ${wmm}\u00d7${hmm} mm but the label is ` +
+          `${chosen.width}\u00d7${chosen.length} mm \u2014 it spans more than one ` +
+          `label and the printer will reject it.`
+        : '';
+    el.classList.toggle('d-none', !overflows);
 }
 
 /**

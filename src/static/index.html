@@ -827,6 +827,12 @@
                             </div>
                         </div>
                         <div class="preview-dims d-none" id="preview-dims" aria-live="polite"></div>
+                        <!-- Die-cut renders that span more than one label. The
+                             printer rejects these, so warn rather than resize:
+                             silently refitting would invent a layout nobody
+                             asked for. -->
+                        <div class="preview-overflow-warning d-none"
+                             id="preview-overflow-warning" role="alert"></div>
                         <!-- Names the three layers. Without it the drawing is
                              only legible to someone who already knows it. -->
                         <div class="preview-legend d-none" id="preview-legend">

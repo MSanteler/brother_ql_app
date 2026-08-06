@@ -557,7 +557,10 @@ body.dark-mode .btn-print { color: #06222B; }
     /* Backing is a little wider than the printable area on every roll. */
     padding: 0 5px;
     max-width: 100%;
-    max-height: 60vh;
+    /* Cap the whole assembly to the visible panel, leaving room for the
+       dimensions caption and legend underneath. */
+    max-height: min(60vh, 420px);
+    min-height: 0;
     /* Feed is downward, so the roll comes IN from the top -- that edge fades
        because there is always more roll behind. The bottom is set per roll
        type below: continuous fades too (the roll runs on), die-cut ends at a
@@ -587,7 +590,14 @@ body.dark-mode .btn-print { color: #06222B; }
     align-items: center;
     justify-content: center;
     aspect-ratio: var(--tape-aspect, auto);
+    /* Bounded on BOTH axes. With only max-width set, aspect-ratio drives the
+       height freely and a long label grows past the backing and is CLIPPED --
+       a preview that silently hides part of the label is worse than no preview.
+       min-height:0 lets it shrink inside the flex parent, which flex items do
+       not do by default. */
     max-width: 100%;
+    max-height: 100%;
+    min-height: 0;
     /* A hairline edge and a slight lift, so the label reads as paper sitting ON
        the liner. Without it a white label on a light liner has no visible
        boundary and its corners -- the whole point on die-cut -- cannot show. */
@@ -626,9 +636,11 @@ body.dark-mode .btn-print { color: #06222B; }
    cut after it prints. Neither end is a fade.
    
    The blade crosses the whole tape, liner included, so the line spans the full
-   backing width rather than just the label. It is drawn just outside the label
-   because that is where the tape is severed: right at the end of the printed
-   area, not through it.
+   backing width rather than just the label.
+   
+   It marks the cut that HAS NOT HAPPENED YET, at the TOP -- where this label
+   meets tape still on the roll. The bottom edge needs no line: that cut already
+   happened (it is why the label starts there), and the hard edge says so.
    
    Die-cut has no cut line at all -- the labels are already separated, and the
    printer just feeds past the gap. */
@@ -637,7 +649,7 @@ body.dark-mode .btn-print { color: #06222B; }
     position: absolute;
     left: -5px;
     right: -5px;
-    bottom: -1px;
+    top: -1px;
     height: 0;
     border-top: 1px dashed rgba(200, 70, 70, 0.85);
     pointer-events: none;
@@ -689,14 +701,25 @@ body.dark-mode .btn-print { color: #06222B; }
 
 .preview-server {
     display: block;
+    /* The image is what actually has intrinsic size, so the cap belongs HERE.
+       Capping the wrappers instead did nothing: their height came from this
+       image, so they grew to fit it and the excess was painted off-panel.
+       60vh minus room for the fades, caption and legend. */
     max-width: 100%;
-    max-height: 100%;
+    max-height: min(48vh, 340px);
+    width: auto;
+    height: auto;
     object-fit: contain;
     image-rendering: crisp-edges;
     image-rendering: pixelated;
     /* The raster is white on a white label, so without an edge the printed area
-       is invisible and the label/raster distinction is lost. */
+       is invisible and the label/raster distinction is lost.
+       
+       `outline` draws OUTSIDE the element, which on die-cut put the dashes past
+       the label's own edge -- the printed area appeared to sit outside the
+       sticker. This keeps the boundary within the raster where it belongs. */
     outline: 1px dashed rgba(0, 0, 0, 0.3);
+    outline-offset: -1px;
 }
 
 /* When the raster covers the whole tape width there is no blank tape to show,
@@ -1451,4 +1474,20 @@ body.dark-mode .queue-badge { color: #06222B; }
 .preview-feed.is-vertical .preview-feed-mm {
     writing-mode: vertical-rl;
     text-orientation: mixed;
+}
+
+
+/* Die-cut overflow warning: the render is longer than the label it is destined
+   for, so it spans several stickers and convert() will reject it. */
+.preview-overflow-warning {
+    margin-top: 8px;
+    max-width: 460px;
+    text-align: center;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: #ff8f8f;
+    background: rgba(200, 70, 70, 0.10);
+    border: 1px solid rgba(200, 70, 70, 0.35);
+    border-radius: 6px;
+    padding: 6px 10px;
 }
