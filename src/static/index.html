@@ -651,54 +651,24 @@
                                     <div class="section-cap">Media</div>
 
                                     <div class="grid-2">
-                                        <div class="field">
-                                            <label class="lbl" for="label-size">Label Type</label>
-                                            <select id="label-size">
-                                                <option value="12">12 mm (endless)</option>
-                                                <option value="12+17">12+17 mm (endless)</option>
-                                                <option value="18">18 mm (endless)</option>
-                                                <option value="29">29 mm (endless)</option>
-                                                <option value="38">38 mm (endless)</option>
-                                                <option value="50">50 mm (endless)</option>
-                                                <option value="54">54 mm (endless)</option>
-                                                <option value="62">62 mm (endless)</option>
-                                                <option value="62red">62 mm (red, endless)</option>
-                                                <option value="102">102 mm (endless)</option>
-                                                <option value="103">103 mm (endless)</option>
-                                                <option value="104">104 mm (endless)</option>
-                                                <option value="17x54">17x54 mm (die-cut)</option>
-                                                <option value="17x87">17x87 mm (die-cut)</option>
-                                                <option value="23x23">23x23 mm (die-cut)</option>
-                                                <option value="29x42">29x42 mm (die-cut)</option>
-                                                <option value="29x90">29x90 mm (die-cut)</option>
-                                                <option value="39x90">39x90 mm (die-cut)</option>
-                                                <option value="39x48">39x48 mm (die-cut)</option>
-                                                <option value="52x29">52x29 mm (die-cut)</option>
-                                                <option value="54x29">54x29 mm (die-cut)</option>
-                                                <option value="60x86">60x86 mm (die-cut)</option>
-                                                <option value="62x29">62x29 mm (die-cut)</option>
-                                                <option value="62x100">62x100 mm (die-cut)</option>
-                                                <option value="102x51">102x51 mm (die-cut)</option>
-                                                <option value="102x152">102x152 mm (die-cut)</option>
-                                                <option value="103x164">103x164 mm (die-cut)</option>
-                                                <option value="d12">12mm (round die-cut)</option>
-                                                <option value="d24">24mm (round die-cut)</option>
-                                                <option value="d58">58mm (round die-cut)</option>
-                                                <option value="pt12">pTouch 12mm (endless)</option>
-                                                <option value="pt18">pTouch 18mm (endless)</option>
-                                                <option value="pt24">pTouch 24mm (endless)</option>
-                                                <option value="pt36">pTouch 36mm (endless)</option>
-                                            </select>
-                                        </div>
-                                        <div class="field">
-                                            <label class="lbl" for="rotate">Rotation</label>
-                                            <select id="rotate">
-                                                <option value="0">0°</option>
-                                                <option value="90">90°</option>
-                                                <option value="180">180°</option>
-                                                <option value="270">270°</option>
-                                            </select>
-                                        </div>
+                                        <!-- Label Type and Rotation used to live here.
+                                             
+                                             Both are now chosen per job in the
+                                             preview bar, where the result is
+                                             visible before printing, and the
+                                             loaded roll is read from the printer
+                                             rather than assumed. Two controls
+                                             for one value meant the preview
+                                             honoured one and the print read the
+                                             other -- see activeLabelSize() and
+                                             activeRotate().
+                                             
+                                             The STORED values remain: they are
+                                             the defaults API callers inherit
+                                             (Homebox and the Canva poller post
+                                             without a label_size), just no
+                                             longer editable here. -->
+                                        
                                     </div>
 
                                     <div class="section-sep"></div>
@@ -886,7 +856,42 @@
                     <div class="preview-output-bar" id="preview-output-bar">
                         <div class="output-field">
                             <label class="output-lbl" for="preview-label-size">Label</label>
-                            <select id="preview-label-size" class="output-select"></select>
+                            <select id="preview-label-size" class="output-select">
+                                <option value="12">12 mm (endless)</option>
+                                <option value="12+17">12+17 mm (endless)</option>
+                                <option value="18">18 mm (endless)</option>
+                                <option value="29">29 mm (endless)</option>
+                                <option value="38">38 mm (endless)</option>
+                                <option value="50">50 mm (endless)</option>
+                                <option value="54">54 mm (endless)</option>
+                                <option value="62">62 mm (endless)</option>
+                                <option value="62red">62 mm (red, endless)</option>
+                                <option value="102">102 mm (endless)</option>
+                                <option value="103">103 mm (endless)</option>
+                                <option value="104">104 mm (endless)</option>
+                                <option value="17x54">17x54 mm (die-cut)</option>
+                                <option value="17x87">17x87 mm (die-cut)</option>
+                                <option value="23x23">23x23 mm (die-cut)</option>
+                                <option value="29x42">29x42 mm (die-cut)</option>
+                                <option value="29x90">29x90 mm (die-cut)</option>
+                                <option value="39x90">39x90 mm (die-cut)</option>
+                                <option value="39x48">39x48 mm (die-cut)</option>
+                                <option value="52x29">52x29 mm (die-cut)</option>
+                                <option value="54x29">54x29 mm (die-cut)</option>
+                                <option value="60x86">60x86 mm (die-cut)</option>
+                                <option value="62x29">62x29 mm (die-cut)</option>
+                                <option value="62x100">62x100 mm (die-cut)</option>
+                                <option value="102x51">102x51 mm (die-cut)</option>
+                                <option value="102x152">102x152 mm (die-cut)</option>
+                                <option value="103x164">103x164 mm (die-cut)</option>
+                                <option value="d12">12mm (round die-cut)</option>
+                                <option value="d24">24mm (round die-cut)</option>
+                                <option value="d58">58mm (round die-cut)</option>
+                                <option value="pt12">pTouch 12mm (endless)</option>
+                                <option value="pt18">pTouch 18mm (endless)</option>
+                                <option value="pt24">pTouch 24mm (endless)</option>
+                                <option value="pt36">pTouch 36mm (endless)</option>
+                            </select>
                         </div>
                         <div class="output-field">
                             <label class="output-lbl" for="preview-rotate">Rotation</label>

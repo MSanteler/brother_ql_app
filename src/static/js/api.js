@@ -65,7 +65,11 @@ async function loadSettings() {
         // Populate settings form
         document.getElementById('printer-uri').value = settings.printer_uri || '';
         document.getElementById('printer-model').value = settings.printer_model || '';
-        document.getElementById('label-size').value = settings.label_size || '62';
+        // Label Type and Rotation no longer have Settings controls -- they are
+        // per-job choices in the preview bar. The saved values are still the
+        // defaults the server hands to API callers, so they are kept here for
+        // the accessors to fall back on rather than written to a dead field.
+        savedLabelSize = settings.label_size || '62';
         document.getElementById('text-font-size').value = settings.font_size || '50';
         document.getElementById('text-alignment').value = settings.alignment || 'left';
         const valignEl = document.getElementById('text-vertical-alignment');
@@ -74,7 +78,7 @@ async function loadSettings() {
         if (brokerUrlEl) brokerUrlEl.value = settings.canva_broker_url || '';
         const brokerTokenEl = document.getElementById('canva-broker-token');
         if (brokerTokenEl) brokerTokenEl.value = settings.canva_broker_token || '';
-        document.getElementById('rotate').value = settings.rotate || '0';
+        savedRotate = settings.rotate != null ? String(settings.rotate) : '0';
         document.getElementById('threshold').value = settings.threshold || '70';
         document.getElementById('dither').value = settings.dither ? 'true' : 'false';
         document.getElementById('red').value = settings.red ? 'true' : 'false';
@@ -372,8 +376,12 @@ async function handleTextPrint(event) {
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
-        const rotate = document.getElementById('rotate').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
         const red = document.getElementById('red').value === 'true';
@@ -463,8 +471,12 @@ async function handleImagePrint(event) {
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
-        const rotate = document.getElementById('rotate').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         
         // Determine dithering based on image mode
@@ -553,8 +565,12 @@ async function handlePdfPrint(event) {
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
-        const rotate = document.getElementById('rotate').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
         const red = document.getElementById('red').value === 'true';
@@ -805,8 +821,12 @@ async function handleQRCodePrint(event) {
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
-        const rotate = document.getElementById('rotate').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
         const red = document.getElementById('red').value === 'true';
@@ -911,8 +931,12 @@ async function handleLabelPrint(event) {
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
-        const rotate = document.getElementById('rotate').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
         const red = document.getElementById('red').value === 'true';
@@ -1024,8 +1048,12 @@ async function handleTextImagePrint(event) {
         // Get printer settings
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
-        const rotate = document.getElementById('rotate').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
         const red = document.getElementById('red').value === 'true';
@@ -1100,11 +1128,15 @@ async function handleSaveSettings(event) {
     try {
         const printerUri = document.getElementById('printer-uri').value;
         const printerModel = document.getElementById('printer-model').value;
-        const labelSize = document.getElementById('label-size').value;
+        // activeLabelSize() for the same reason as activeRotate() above.
+        const labelSize = activeLabelSize();
         const fontSize = document.getElementById('text-font-size').value;
         const alignment = document.getElementById('text-alignment').value;
         const verticalAlignment = readVerticalAlignment();
-        const rotate = document.getElementById('rotate').value;
+        // activeRotate(), NOT #rotate: the ROTATION control under the preview is
+        // an override, and reading the Settings-page field directly meant the
+        // preview honoured the change and the print ignored it.
+        const rotate = activeRotate();
         const threshold = document.getElementById('threshold').value;
         const dither = document.getElementById('dither').value === 'true';
         const red = document.getElementById('red').value === 'true';
@@ -1526,8 +1558,7 @@ function activeRotateMode() {
 function activeLabelSize() {
     const override = document.getElementById('preview-label-size');
     if (override && override.value) return override.value;
-    const saved = document.getElementById('label-size');
-    return saved ? saved.value : '62';
+    return savedLabelSize;
 }
 
 /**
@@ -1536,8 +1567,8 @@ function activeLabelSize() {
  */
 function activeRotate() {
     const override = document.getElementById('preview-rotate');
-    const el = (override && override.value !== '') ? override : document.getElementById('rotate');
-    const n = parseInt(el ? el.value : '0', 10);
+    const raw = (override && override.value !== '') ? override.value : savedRotate;
+    const n = parseInt(raw, 10);
     return [0, 90, 180, 270].includes(n) ? n : 0;
 }
 
@@ -1558,6 +1589,12 @@ function activeRotate() {
 // Most recent successful media reading: {width, length, sizes[]} or null when
 // the printer could not be asked (asleep, unplugged, network printer).
 let loadedMedia = null;
+
+// Saved defaults for values that no longer have a Settings control. They still
+// exist server-side -- API callers inherit them -- so the UI keeps them to fall
+// back on when no per-job override is set.
+let savedLabelSize = '62';
+let savedRotate = '0';
 
 /**
  * Ask the printer what roll it holds and update the readout + print gating.
@@ -1594,6 +1631,29 @@ async function refreshLoadedMedia() {
     } catch (error) {
         loadedMedia = null;
     }
+    // Seed the label selector from the roll actually loaded, ONCE, on the first
+    // successful read -- the printer knowing what is in it is better than a
+    // markup default, and it saves reaching for "Match loaded" every time.
+    //
+    // Only while untouched: once a roll has been chosen deliberately, a later
+    // poll must not move it. Composing for a roll you are about to load is the
+    // whole point of the override, and the media guard is what stops a mismatch
+    // reaching the printer.
+    const sel = document.getElementById('preview-label-size');
+    if (sel && !sel.dataset.touched && loadedMedia
+            && loadedMedia.sizes && loadedMedia.sizes.length) {
+        const want = String(loadedMedia.sizes[0]);
+        if (sel.value !== want) {
+            sel.value = want;
+            // The change listener sets dataset.touched, which is what stops a
+            // later poll moving the selector again. Relying on that side effect
+            // would be fragile, so mark it here too: seeding happens once, and
+            // whatever is selected afterwards is the user's.
+            sel.dataset.touched = '1';
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    }
+
     updateOutputBar();
 }
 

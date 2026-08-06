@@ -414,7 +414,7 @@ function setupEventListeners() {
 
     // Vertical alignment only has an effect on die-cut labels, so reflect the
     // selected roll rather than leaving a control that silently does nothing.
-    const labelSizeEl = document.getElementById('label-size');
+    const labelSizeEl = document.getElementById('preview-label-size');
     if (labelSizeEl) {
         labelSizeEl.addEventListener('change', updateVerticalAlignAvailability);
         updateVerticalAlignAvailability();
@@ -493,18 +493,22 @@ function setupCanva() {
  * markup, so the two lists cannot drift apart as label support changes.
  */
 function setupOutputBar() {
-    const savedLabel = document.getElementById('label-size');
-    const savedRotate = document.getElementById('rotate');
+    // The Settings controls for label size and rotation are gone -- both are
+    // per-job choices now. The option list lives in the preview selector's own
+    // markup rather than being cloned from Settings, so this no longer depends
+    // on an element that does not exist.
     const outLabel = document.getElementById('preview-label-size');
     const outRotate = document.getElementById('preview-rotate');
     const matchBtn = document.getElementById('preview-match-loaded');
 
-    if (!outLabel || !savedLabel) return;
+    if (!outLabel) return;
 
-    // Mirror the Settings options, then seed from the saved value.
-    outLabel.innerHTML = savedLabel.innerHTML;
-    outLabel.value = savedLabel.value;
-    if (outRotate && savedRotate) outRotate.value = savedRotate.value;
+    // Rotation starts at 0 -- it is a choice about this job, not a setting to
+    // inherit. The label size is seeded from the loaded roll instead, but not
+    // here: this runs before the printer status poll has returned, so
+    // loadedMedia is still null. refreshLoadedMedia() does it on the first
+    // successful read.
+    if (outRotate) outRotate.value = '0';
 
     const onChange = () => {
         // Vertical alignment applies to die-cut only, and the override is now
@@ -529,23 +533,11 @@ function setupOutputBar() {
         matchBtn.addEventListener('click', matchLoadedMedia);
     }
 
-    // Changing the saved default in Settings should move the override with it,
-    // so Settings still behaves as "what is normally loaded" -- but only while
-    // the user has not deliberately overridden it.
-    savedLabel.addEventListener('change', () => {
-        if (!outLabel.dataset.touched) {
-            outLabel.value = savedLabel.value;
-            onChange();
-        }
-    });
-    if (savedRotate && outRotate) {
-        savedRotate.addEventListener('change', () => {
-            if (!outRotate.dataset.touched) {
-                outRotate.value = savedRotate.value;
-                onChange();
-            }
-        });
-    }
+    // No Settings->preview sync any more: label size and rotation only exist
+    // in this bar. The old block mirrored the Settings controls into these
+    // overrides, and with those controls removed it was calling
+    // addEventListener on null -- which threw during init and took the theme,
+    // the queue poll and the layout down with it.
     outLabel.addEventListener('change', () => { outLabel.dataset.touched = '1'; });
     if (outRotate) {
         outRotate.addEventListener('change', () => { outRotate.dataset.touched = '1'; });
@@ -571,8 +563,7 @@ function setupOutputBar() {
 function updateRotateModeAvailability() {
     const field = document.getElementById('preview-rotate-mode-field');
     const rotateEl = document.getElementById('preview-rotate');
-    const labelEl = document.getElementById('preview-label-size')
-        || document.getElementById('label-size');
+    const labelEl = document.getElementById('preview-label-size');
     if (!field || !rotateEl || !labelEl || !labelEl.options.length) return;
 
     const quarter = [90, 270].includes(parseInt(rotateEl.value, 10));
@@ -598,8 +589,7 @@ function updateRotateModeAvailability() {
 function updateVerticalAlignAvailability() {
     // The override under the preview is what the render actually uses, so read
     // that when present and fall back to the saved setting otherwise.
-    const labelSizeEl = document.getElementById('preview-label-size')
-        || document.getElementById('label-size');
+    const labelSizeEl = document.getElementById('preview-label-size');
     const field = document.getElementById('text-valign-field');
     const select = document.getElementById('text-vertical-alignment');
     const hint = document.getElementById('text-valign-hint');
