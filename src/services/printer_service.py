@@ -633,7 +633,8 @@ class PrinterService:
                 logger.info("Rotation applied", job_id=job_id, rotate=rotate)
 
             # Resize image to fit label width
-            resized_path = self._resize_image(source_path, settings.get("label_size"))
+            resized_path = self._resize_image(source_path, settings.get("label_size"),
+                                              settings.get("scale_mode"))
             temp_files.append(resized_path)
             logger.info("Image resized", job_id=job_id, resized_path=resized_path)
 
@@ -910,7 +911,8 @@ class PrinterService:
                     temp_files.append(page_source)
 
                 # Fit the page to the label width (same path as image printing).
-                resized_path = self._resize_image(page_source, settings.get("label_size"))
+                resized_path = self._resize_image(page_source, settings.get("label_size"),
+                                                  settings.get("scale_mode"))
                 temp_files.append(resized_path)
 
                 # Send to the printer (inherits copies/cut_mode/dpi/red/etc.).
@@ -1139,7 +1141,8 @@ class PrinterService:
                 source_path = self._apply_rotation(image_path, rotate)
                 temp_files.append(source_path)
 
-            resized_path = self._resize_image(source_path, settings.get("label_size"))
+            resized_path = self._resize_image(source_path, settings.get("label_size"),
+                                              settings.get("scale_mode"))
             temp_files.append(resized_path)
 
             with Image.open(resized_path) as img:
@@ -1532,7 +1535,8 @@ class PrinterService:
             logger.error("Error creating text label", error=str(e), exc_info=True)
             raise ImageProcessingError(f"Error creating text label: {str(e)}")
     
-    def _resize_image(self, image_path: str, label_size: Optional[str] = None) -> str:
+    def _resize_image(self, image_path: str, label_size: Optional[str] = None,
+                      settings_scale_mode: Optional[str] = None) -> str:
         """
         Resize an image to fit the label width.
 
@@ -1551,12 +1555,31 @@ class PrinterService:
             max_width = get_label_width(label_size)
 
             with Image.open(image_path) as img:
-                # Calculate new dimensions
-                aspect_ratio = img.height / img.width
-                new_height = int(max_width * aspect_ratio)
-                
-                # Resize image
-                img = img.resize((max_width, new_height), Image.Resampling.LANCZOS)
+                # Scaling is OPT-IN, the same as it is for text.
+                #
+                # This used to stretch every image to the tape width
+                # unconditionally, which quietly undid rotation: a 90-degree
+                # turn made the image tall and narrow, and the resize
+                # immediately stretched it back to full width, so rotate=0 and
+                # rotate=90 produced byte-identical output. Rotation is the
+                # user's choice and scaling is a separate one; deriving the
+                # second from the first is what made this confusing.
+                #
+                # fit/fill scale to the tape. actual and custom leave the image
+                # at the size it arrived, and anything wider than the tape is
+                # reported by the caller rather than silently shrunk.
+                mode = str(settings_scale_mode or "actual").lower()
+                if mode in ("fit", "fill"):
+                    aspect_ratio = img.height / img.width
+                    new_height = int(max_width * aspect_ratio)
+                    img = img.resize((max_width, new_height),
+                                     Image.Resampling.LANCZOS)
+                elif img.width > max_width:
+                    # Too wide to print at all. Scale down only -- never up --
+                    # so the label still comes out, but never invent size.
+                    aspect_ratio = img.height / img.width
+                    img = img.resize((max_width, int(max_width * aspect_ratio)),
+                                     Image.Resampling.LANCZOS)
                 
                 # Save resized image
                 filename = os.path.basename(image_path)
