@@ -234,6 +234,12 @@ function setupEventListeners() {
     if (imageMode) {
         imageMode.addEventListener('change', () => requestServerPreview('image'));
     }
+    const imageScale = document.getElementById('image-scale-mode');
+    if (imageScale) {
+        // Re-render on change: scaling alters the label's size, which is the
+        // whole reason to see it before printing.
+        imageScale.addEventListener('change', () => requestServerPreview('image'));
+    }
     
     // QR code print form
     const qrcodeForm = document.getElementById('qrcode-form');

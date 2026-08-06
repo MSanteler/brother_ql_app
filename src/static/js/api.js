@@ -504,6 +504,8 @@ async function handleImagePrint(event) {
             copies: copies,
             cut_mode: document.getElementById('cut-mode-image').value,
             dpi_600: document.getElementById('dpi-600').value === 'true',
+            // Same control the preview reads, so the two cannot disagree.
+            scale_mode: (document.getElementById('image-scale-mode') || {}).value || 'actual',
             image_mode: imageMode.value
         }));
         if (copies >= LARGE_BATCH_THRESHOLD) {
@@ -2123,8 +2125,12 @@ function buildPreviewRequest(mode) {
         }
         const formData = new FormData();
         formData.append('image', imageInput.files[0]);
+        const scaleEl = document.getElementById('image-scale-mode');
         formData.append('settings', JSON.stringify(Object.assign({}, settings, {
             dither: dither,
+            // Preview and print must agree, so both read the same control. An
+            // absent element falls back to `actual`, which is the default.
+            scale_mode: scaleEl ? scaleEl.value : 'actual',
             image_mode: imageMode.value
         })));
         return { url: '/api/v1/image/preview', form: formData };

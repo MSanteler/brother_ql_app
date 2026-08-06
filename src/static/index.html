@@ -202,6 +202,28 @@
                                         </select>
                                         <div class="hint">Preview how the image will be printed</div>
                                     </div>
+                                    <div class="field">
+                                        <label class="lbl" for="image-scale-mode">Scaling</label>
+                                        <select id="image-scale-mode">
+                                            <option value="actual">Actual size</option>
+                                            <option value="fit">Scale to fit tape width</option>
+                                        </select>
+                                        <!-- Off by default. Scaling to the tape
+                                             used to happen unconditionally,
+                                             which silently cancelled rotation:
+                                             a quarter turn made the image tall
+                                             and narrow and the resize stretched
+                                             it straight back, so 0 and 90
+                                             printed identically. It is a
+                                             separate choice from rotation and
+                                             is opt-in for that reason. -->
+                                        <div class="hint">
+                                            Actual size prints the image as-is.
+                                            Scale to fit widens it to the tape,
+                                            which is what Homebox-style labels
+                                            usually want.
+                                        </div>
+                                    </div>
                                     <div class="print-options">
                                         <div class="grid-2">
                                             <div class="field">
