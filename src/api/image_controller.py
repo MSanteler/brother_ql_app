@@ -161,6 +161,7 @@ def compose_image() -> Dict[str, Any]:
     except json.JSONDecodeError:
         raise ValidationError("Invalid settings JSON", "settings")
 
+    original_name = image_file.filename or "Image"
     stored_path = _save_uploaded_file(image_file)
 
     try:
@@ -171,8 +172,8 @@ def compose_image() -> Dict[str, Any]:
         _cleanup_uploaded_file(stored_path)
         raise ValidationError("Uploaded file is not a valid image", "image")
 
-    original_name = image_file.filename or "Image"
-    label = request.form.get('label') or secure_filename(original_name) or "Image"
+    label = (request.form.get('label') or request.args.get('label')
+             or secure_filename(original_name) or "Image")
     params = {"type": "image", "filename": original_name, "settings": settings}
     job_id = print_queue.hold("image", label, params=params, file_path=stored_path)
     logger.info("Image held for review", job_id=job_id, path=stored_path)

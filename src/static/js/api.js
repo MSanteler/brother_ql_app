@@ -2345,10 +2345,18 @@ function renderJobs(jobs) {
         const cancelBtn = job.status === 'queued'
             ? `<button type="button" class="btn-ghost btn-sm queue-cancel" data-action="cancel" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-x-lg"></i> Cancel</button>`
             : '';
-        const reprintBtns = job.can_reprint === true
-            ? `<button type="button" class="btn-ghost btn-sm queue-reprint" data-action="reprint" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-arrow-clockwise"></i> Reprint</button>` +
-              `<button type="button" class="btn-ghost btn-sm queue-open" data-action="open" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-box-arrow-up-right"></i> Open</button>`
+        // Reprint re-runs a job's stored executor, so it needs one. Open just
+        // loads the job's file into the composer and does NOT print -- which is
+        // exactly what a HELD job is waiting for, so it must not be gated on
+        // can_reprint. Held jobs have no executor (nothing has run yet) but do
+        // have a file.
+        const reprintBtn = job.can_reprint === true
+            ? `<button type="button" class="btn-ghost btn-sm queue-reprint" data-action="reprint" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-arrow-clockwise"></i> Reprint</button>`
             : '';
+        const openBtn = (job.can_reprint === true || job.status === 'held')
+            ? `<button type="button" class="btn-ghost btn-sm queue-open" data-action="open" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-box-arrow-up-right"></i> ${job.status === 'held' ? 'Review' : 'Open'}</button>`
+            : '';
+        const reprintBtns = reprintBtn + openBtn;
         // Delete is available for any job that is not currently printing.
         const deleteBtn = job.status !== 'printing'
             ? `<button type="button" class="btn-ghost btn-sm queue-delete" data-action="delete" data-job-id="${escapeHtml(job.id)}" data-job-status="${escapeHtml(job.status || '')}" title="Delete job"><i class="bi bi-trash3"></i></button>`
