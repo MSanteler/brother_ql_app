@@ -1574,12 +1574,32 @@ class PrinterService:
                     new_height = int(max_width * aspect_ratio)
                     img = img.resize((max_width, new_height),
                                      Image.Resampling.LANCZOS)
-                elif img.width > max_width:
-                    # Too wide to print at all. Scale down only -- never up --
-                    # so the label still comes out, but never invent size.
-                    aspect_ratio = img.height / img.width
-                    img = img.resize((max_width, int(max_width * aspect_ratio)),
-                                     Image.Resampling.LANCZOS)
+                elif img.width != max_width:
+                    # PAD, do not scale.
+                    #
+                    # convert() resizes ANY image whose width is not exactly the
+                    # tape width -- brother_ql/conversion.py:110 -- so handing it
+                    # a 526px image on 554px tape gets it stretched to 554
+                    # regardless of scale_mode, and a rotated 200x526 image gets
+                    # stretched back to 554 wide, which squashes it flat and
+                    # looks like the rotation was ignored. Both symptoms, one
+                    # cause, and neither is visible in the preview because the
+                    # preview never calls convert().
+                    #
+                    # Centring the image on a tape-width canvas makes the width
+                    # exact, so convert() leaves it alone and "actual size" means
+                    # what it says. Wider-than-tape still has to scale down --
+                    # there is nowhere to put the overflow.
+                    if img.width > max_width:
+                        aspect_ratio = img.height / img.width
+                        img = img.resize(
+                            (max_width, int(max_width * aspect_ratio)),
+                            Image.Resampling.LANCZOS)
+                    else:
+                        canvas = Image.new("RGB", (max_width, img.height), "white")
+                        canvas.paste(img.convert("RGB"),
+                                     ((max_width - img.width) // 2, 0))
+                        img = canvas
                 
                 # Save resized image
                 filename = os.path.basename(image_path)
