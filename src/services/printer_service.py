@@ -1359,13 +1359,21 @@ class PrinterService:
             # LENGTHWISE_CANVAS_PX caps that unbounded direction so a long line
             # still wraps somewhere: 8x the tape width is roughly a 40cm label on
             # 50mm tape, past any sane label and far short of running the roll out.
-            # Lengthwise layout follows the SCALING choice, not the rotation.
-            # scale_mode="fill" means "make it big down the tape"; rotate_mode
-            # is still honoured for callers that predate scale_mode.
-            _mode_hint = str(settings.get("scale_mode") or "").lower()
-            _legacy_layout = str(settings.get("rotate_mode", "image")) == "layout"
-            lengthwise = (rotate_quarter and not is_die_cut
-                          and (_mode_hint == "fill" or _legacy_layout))
+            # A quarter turn on continuous tape ALWAYS lays out lengthwise --
+            # the same transpose die-cut gets above, for the same reason.
+            #
+            # Rotating the finished render instead produces a canvas only as
+            # tall as the text needs (say 91px), so the quarter turn leaves a
+            # 91px-wide strip on 554px tape: 8mm of print on a 50mm roll, with
+            # the label running 47mm down the feed. That is not a rotated label,
+            # it is a wasted one.
+            #
+            # This used to be opt-in behind rotate_mode/scale_mode because it was
+            # bundled with growing the font to fill the tape. The growth is gone
+            # -- font_size is honoured -- so the transpose is just what rotation
+            # MEANS here, and gating it behind a second control only made
+            # rotation look broken.
+            lengthwise = rotate_quarter and not is_die_cut
             if lengthwise:
                 tape_width = width
                 width = min(LENGTHWISE_CANVAS_PX, tape_width * 8)
