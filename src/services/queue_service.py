@@ -182,6 +182,55 @@ class PrintQueueService:
         logger.info("Print job submitted", job_id=job_id, type=job_type, label=label)
         return job_id
 
+    def hold(
+        self,
+        job_type: str,
+        label: str,
+        params: Optional[Dict[str, Any]] = None,
+        file_path: Optional[str] = None,
+    ) -> str:
+        """Record a job WITHOUT queueing it for execution.
+
+        For labels that should be reviewed before anything is printed --
+        currently Homebox, which renders a label and fires a fire-and-forget
+        print command with no way to open a browser and no idea whether the
+        rotation is what the user wanted.
+
+        Deliberately not `submit()` plus a paused queue: pause is GLOBAL, so it
+        would also hold back voice labels and every other caller, and resuming
+        would print everything at once including the labels still under review.
+        A held job is simply never enqueued; it becomes printable only when
+        someone asks for it by id.
+
+        The file is stored the same way as any other job's, so /jobs/{id}/file
+        serves it and the composer can open it exactly like a Canva export.
+        """
+        self._sweep_job_files()
+
+        job_id = uuid.uuid4().hex
+        job = {
+            "id": job_id,
+            "type": job_type,
+            "status": "held",
+            "label": label,
+            "created_at": _now_iso(),
+            "started_at": None,
+            "finished_at": None,
+            "error": None,
+            "params": copy.deepcopy(params) if params else {},
+            # Nothing to re-run: a held job has no executor until it is opened
+            # and printed like any other composition.
+            "can_reprint": False,
+        }
+        with self._lock:
+            self._jobs[job_id] = job
+            self._files[job_id] = file_path
+            self._order.append(job_id)
+            self._prune_locked()
+        logger.info("Print job held for review", job_id=job_id,
+                    type=job_type, label=label)
+        return job_id
+
     def reprint(self, job_id: str) -> Optional[str]:
         """Re-queue a previous job's executor as a brand-new job.
 

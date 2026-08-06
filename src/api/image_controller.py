@@ -131,6 +131,60 @@ def print_image() -> Dict[str, Any]:
         logger.error("Error printing image", error=str(e), exc_info=True)
         raise PrinterError(f"Error printing image: {str(e)}")
 
+def compose_image() -> Dict[str, Any]:
+    """Accept an image and HOLD it for review instead of printing.
+
+    For callers that render a label and fire it at the printer with no way to
+    check the result first -- Homebox being the case this exists for. Its
+    PRINT_COMMAND is fire-and-forget: it cannot open a browser, and it has no
+    idea whether the rotation or scaling is what the user actually wanted.
+
+    Same shape as the Canva "open in composer" flow: nothing prints, the image
+    is persisted as a job, and the editor can open it, adjust rotation and
+    scale, and print or discard. See export_canva_design for the reasoning about
+    why the queue's global pause cannot be used for this.
+
+    NO media guard: nothing is printed, and refusing to accept a label because
+    the wrong roll is loaded would defeat the point -- holding it for review is
+    exactly when the roll is most likely still to be changed.
+    """
+    if 'image' not in request.files:
+        raise ValidationError("No image file provided", "image")
+
+    image_file = request.files['image']
+    if image_file.filename == '':
+        raise ValidationError("No image file selected", "image")
+
+    settings_json = request.form.get('settings', '{}')
+    try:
+        settings = settings_service.resolve_print_settings(json.loads(settings_json))
+    except json.JSONDecodeError:
+        raise ValidationError("Invalid settings JSON", "settings")
+
+    stored_path = _save_uploaded_file(image_file)
+
+    try:
+        with Image.open(stored_path) as img:
+            img.verify()
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as e:
+        logger.warning("Rejected non-image or invalid upload", error=str(e))
+        _cleanup_uploaded_file(stored_path)
+        raise ValidationError("Uploaded file is not a valid image", "image")
+
+    original_name = image_file.filename or "Image"
+    label = request.form.get('label') or secure_filename(original_name) or "Image"
+    params = {"type": "image", "filename": original_name, "settings": settings}
+    job_id = print_queue.hold("image", label, params=params, file_path=stored_path)
+    logger.info("Image held for review", job_id=job_id, path=stored_path)
+
+    return {
+        "success": True,
+        "job_id": job_id,
+        "held": True,
+        "message": "Label held for review -- open it in the composer to print",
+    }
+
+
 def _save_uploaded_file(file: FileStorage) -> str:
     """
     Save an uploaded file to the upload folder.

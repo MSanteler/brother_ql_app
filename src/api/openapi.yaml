@@ -187,6 +187,48 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /image/compose:
+    post:
+      summary: Hold an image for review instead of printing it
+      description: >-
+        Accepts a rendered label and stores it as a HELD job. Nothing prints.
+        For callers that fire a label at the printer with no way to check the
+        result first -- Homebox's PRINT_COMMAND is fire-and-forget and cannot
+        open a browser. The held job is opened in the composer, where rotation
+        and scale can be checked before printing or discarding.
+
+        No media guard: nothing is printed, and holding a label for review is
+        exactly when the roll is most likely still to be changed.
+      operationId: api.image_controller.compose_image
+      tags:
+        - image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: The rendered label image
+                settings:
+                  type: string
+                  description: JSON string of print settings, applied when printed
+                label:
+                  type: string
+                  description: Human-readable name shown in the held list
+              required:
+                - image
+      responses:
+        '200':
+          description: Label held for review
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /image/print:
     post:
       summary: Print image on a label
@@ -1168,6 +1210,10 @@ components:
           type: string
           description: Current job status
           enum:
+            # `held` is recorded but never enqueued -- see queue_service.hold().
+            # It exists for labels that must be reviewed before printing, and
+            # becomes a normal job only when someone opens and prints it.
+            - held
             - queued
             - printing
             - done
