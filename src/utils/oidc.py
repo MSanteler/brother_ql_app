@@ -51,6 +51,7 @@ _SESSION_USER = "oidc_user"
 _SESSION_EXPIRES = "oidc_expires_at"
 _SESSION_STATE = "oidc_state"
 _SESSION_NONCE = "oidc_nonce"
+_SESSION_VERIFIER = "oidc_code_verifier"
 
 
 def oidc_enabled():
@@ -121,8 +122,30 @@ def current_user():
 
 
 def _clear_session():
-    for key in (_SESSION_USER, _SESSION_EXPIRES, _SESSION_STATE, _SESSION_NONCE):
+    for key in (_SESSION_USER, _SESSION_EXPIRES, _SESSION_STATE, _SESSION_NONCE,
+                _SESSION_VERIFIER):
         session.pop(key, None)
+
+
+def _pkce_pair():
+    """A PKCE verifier and its S256 challenge.
+
+    Worth having even for a confidential client: it binds the authorization
+    code to this browser session, so a code intercepted from the redirect (a
+    logged URL, a leaky referrer, shoulder-surfing the address bar) cannot be
+    redeemed without the verifier that never left this app.
+
+    The Keycloak client sets pkce.code.challenge.method=S256, which makes it
+    mandatory -- without this the token exchange fails with
+    "Missing parameter: code_challenge".
+    """
+    import base64
+    import hashlib
+
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
+    return verifier, challenge
 
 
 def register_oidc(app):
@@ -166,8 +189,10 @@ def _register_routes(app, conf):
         # state and nonce are the CSRF and replay defences for the code flow.
         state = secrets.token_urlsafe(32)
         nonce = secrets.token_urlsafe(32)
+        verifier, challenge = _pkce_pair()
         session[_SESSION_STATE] = state
         session[_SESSION_NONCE] = nonce
+        session[_SESSION_VERIFIER] = verifier
 
         params = {
             "client_id": conf["client_id"],
@@ -176,6 +201,8 @@ def _register_routes(app, conf):
             "redirect_uri": _redirect_uri(),
             "state": state,
             "nonce": nonce,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
         }
         return redirect(f"{conf['auth_endpoint']}?{urlencode(params)}")
 
@@ -197,6 +224,12 @@ def _register_routes(app, conf):
         if not code:
             return _signin_page("Sign-in failed. Try again."), 401
 
+        verifier = session.pop(_SESSION_VERIFIER, None)
+        if not verifier:
+            # The session lost its verifier, so the exchange cannot succeed.
+            logger.warning("OIDC callback with no PKCE verifier in session")
+            return _signin_page("Sign-in expired. Try again."), 401
+
         try:
             token = requests.post(
                 conf["token_endpoint"],
@@ -206,6 +239,7 @@ def _register_routes(app, conf):
                     "redirect_uri": _redirect_uri(),
                     "client_id": conf["client_id"],
                     "client_secret": conf["client_secret"],
+                    "code_verifier": verifier,
                 },
                 timeout=15,
             )

@@ -179,6 +179,39 @@ def test_malformed_id_token_returns_none():
 
 
 # --------------------------------------------------------------------------
+# PKCE
+# --------------------------------------------------------------------------
+
+def test_pkce_challenge_is_the_s256_of_the_verifier():
+    import base64
+    import hashlib
+
+    verifier, challenge = oidc._pkce_pair()
+    expected = base64.urlsafe_b64encode(
+        hashlib.sha256(verifier.encode("ascii")).digest()
+    ).decode("ascii").rstrip("=")
+    assert challenge == expected
+
+
+def test_pkce_challenge_has_no_padding():
+    """RFC 7636 requires base64url without '=' padding; Keycloak rejects it."""
+    _, challenge = oidc._pkce_pair()
+    assert "=" not in challenge
+
+
+def test_pkce_pair_is_random_each_time():
+    assert oidc._pkce_pair()[0] != oidc._pkce_pair()[0]
+
+
+def test_verifier_is_cleared_with_the_session(app_ctx):
+    from flask import session
+    session[oidc._SESSION_VERIFIER] = "v"
+    session[oidc._SESSION_USER] = "ms"
+    oidc._clear_session()
+    assert oidc._SESSION_VERIFIER not in session
+
+
+# --------------------------------------------------------------------------
 # The framing constraints this exists for
 # --------------------------------------------------------------------------
 
