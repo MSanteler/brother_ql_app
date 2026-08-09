@@ -26,26 +26,111 @@ logger = structlog.get_logger()
 # decode from an uploaded image.
 Image.MAX_IMAGE_PIXELS = 50_000_000
 
+def _read_raw_image_body():
+    """Return the request body when the image arrived as raw bytes, else None.
+
+    Lets callers that cannot build a multipart upload print an image. That is
+    not a hypothetical: Homebox's HBOX_LABEL_MAKER_PRINT_COMMAND is a single
+    shell command, and its image ships only BusyBox wget -- no curl, no
+    multipart. Requiring multipart forced a relay service to exist purely to
+    re-encode the body.
+
+    ORDER MATTERS, and getting it wrong fails silently. Touching request.files
+    or request.form makes Werkzeug parse the body as a form and CONSUME the
+    stream, after which get_data() returns b"". BusyBox wget sends
+    Content-Type: application/x-www-form-urlencoded by default, so a caller
+    that looked for a file field first swallowed every raw upload: the magic
+    check then saw zero bytes. Worse, wget exits 0 on an HTTP error unless
+    --server-response is passed, so the sender reported success.
+
+    So: decide from the CONTENT TYPE alone, before reading anything.
+    """
+    # A real multipart upload is handled by the normal path.
+    if request.mimetype == "multipart/form-data":
+        return None
+
+    data = request.get_data(cache=False)
+    if not data:
+        return None
+
+    # Only accept something that actually looks like an image. Anything else is
+    # far more likely to be a mis-sent form than a picture, and treating it as
+    # one produces a confusing "not a valid image" much later.
+    if not _looks_like_image(data):
+        return None
+
+    return data
+
+
+# Magic numbers for the formats Pillow will accept here. PNG covers Homebox and
+# the browser uploader; the rest are cheap to allow and would otherwise be a
+# baffling rejection.
+_IMAGE_MAGIC = (
+    b"\x89PNG\r\n\x1a\n",       # PNG
+    b"\xff\xd8\xff",            # JPEG
+    b"GIF87a", b"GIF89a",       # GIF
+    b"BM",                      # BMP
+    b"II*\x00", b"MM\x00*",     # TIFF
+)
+
+
+def _looks_like_image(data: bytes) -> bool:
+    return any(data.startswith(m) for m in _IMAGE_MAGIC)
+
+
+def _opt(name: str):
+    """Read an option from the form or the query string.
+
+    A raw-body caller has no form to put flags in, so they arrive as query
+    parameters: ...?hold=true&settings=%7B...%7D
+    """
+    if name in request.form:
+        return request.form.get(name)
+    return request.args.get(name)
+
+
+def _save_raw_body(data: bytes) -> str:
+    """Persist a raw-body image the same way an upload is persisted."""
+    jobs_dir = os.path.join(_get_upload_folder(), "jobs")
+    os.makedirs(jobs_dir, exist_ok=True)
+    path = os.path.join(jobs_dir, f"{uuid.uuid4().hex}.png")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    return path
+
+
 def print_image() -> Dict[str, Any]:
     """
     Print an image on a label.
-    
+
+    Accepts either a multipart upload (``image`` file field, options in the
+    form) or a raw image body (options in the query string). See
+    _read_raw_image_body for why both exist.
+
     Returns:
         Dict containing the result of the print operation.
     """
     try:
         logger.info("Processing image print request")
-        
-        # Check if image file is present
-        if 'image' not in request.files:
-            raise ValidationError("No image file provided", "image")
-        
-        image_file = request.files['image']
-        if image_file.filename == '':
-            raise ValidationError("No image file selected", "image")
-        
-        # Parse settings
-        settings_json = request.form.get('settings', '{}')
+
+        # Two body shapes. ORDER MATTERS -- see _read_raw_image_body.
+        raw = _read_raw_image_body()
+
+        if raw is None:
+            # Multipart: the browser uploader and anything that can build one.
+            if 'image' not in request.files:
+                raise ValidationError("No image file provided", "image")
+
+            image_file = request.files['image']
+            if image_file.filename == '':
+                raise ValidationError("No image file selected", "image")
+
+            settings_json = request.form.get('settings', '{}')
+        else:
+            # Raw body: minimal clients that cannot do multipart uploads.
+            image_file = None
+            settings_json = request.args.get('settings', '{}')
+
         try:
             settings = settings_service.resolve_print_settings(json.loads(settings_json))
         except json.JSONDecodeError:
@@ -58,13 +143,14 @@ def print_image() -> Dict[str, Any]:
                 raise ValidationError(f"{setting} is required", f"settings.{setting}")
 
         # Dry run: validate settings + reachability, but do not save/print.
-        if is_dry_run(request.form.get("dry_run")):
+        if is_dry_run(_opt("dry_run")):
             return build_dry_run_response(settings, None)
 
         # Persist the uploaded image under uploads/jobs/ so it survives the
         # print and is available for reprint/open. TTL cleanup in the queue
         # service removes it later -- the job no longer deletes it.
-        stored_path = _save_uploaded_file(image_file)
+        stored_path = (_save_raw_body(raw) if image_file is None
+                       else _save_uploaded_file(image_file))
         logger.info("Image saved", path=stored_path)
 
         # Verify the uploaded file is actually a decodable image before
@@ -85,16 +171,16 @@ def print_image() -> Dict[str, Any]:
         def job(path=stored_path, s=settings):
             printer_service.print_image(path, s)
 
-        original_name = image_file.filename or "Image"
-        label = secure_filename(image_file.filename or "") or "Image"
+        original_name = (image_file.filename if image_file else None) or "Image"
+        label = secure_filename(original_name) or "Image"
         params = {"type": "image", "filename": original_name, "settings": settings}
         # An image job holds its file, so a held one can ALSO be reopened in
         # the composer -- which is what /image/compose has always done.
         return guard_and_dispatch(
             "image", label, job, settings,
-            hold=request.form.get("hold"),
-            confirm_large_batch=request.form.get("confirm_large_batch"),
-            amend_job_id=request.form.get("amend_job_id"),
+            hold=_opt("hold"),
+            confirm_large_batch=_opt("confirm_large_batch"),
+            amend_job_id=_opt("amend_job_id"),
             params=params, file_path=stored_path,
         )
     except ConfirmationRequiredError:

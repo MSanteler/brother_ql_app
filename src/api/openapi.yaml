@@ -242,11 +242,28 @@ paths:
       summary: Print image on a label
       description: Prints an uploaded image on a label with specified settings
       operationId: api.image_controller.print_image
+      parameters:
+        # Only used with a raw image body -- a multipart caller puts these in
+        # the form instead. Declared so connexion does not reject them.
+        - { name: settings, in: query, required: false, schema: { type: string } }
+        - { name: hold, in: query, required: false, schema: { type: string } }
+        - { name: dry_run, in: query, required: false, schema: { type: string } }
+        - { name: amend_job_id, in: query, required: false, schema: { type: string } }
+        - { name: confirm_large_batch, in: query, required: false, schema: { type: string } }
       tags:
         - image
       requestBody:
         required: true
         content:
+          # Raw image body, for callers that cannot build a multipart
+          # upload. Options move to the query string. Homebox's print command
+          # is the case this exists for: its image has only BusyBox wget.
+          image/png:
+            schema: { type: string, format: binary }
+          image/jpeg:
+            schema: { type: string, format: binary }
+          application/octet-stream:
+            schema: { type: string, format: binary }
           multipart/form-data:
             schema:
               type: object

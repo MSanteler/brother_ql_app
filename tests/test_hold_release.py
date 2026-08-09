@@ -140,12 +140,27 @@ def test_every_submission_endpoint_accepts_hold():
     ]
     missing = []
     for path in submission_paths:
-        body = spec["paths"][path]["post"]["requestBody"]["content"]
-        schema = next(iter(body.values()))["schema"]
-        if "$ref" in schema:
-            name = schema["$ref"].rsplit("/", 1)[-1]
-            schema = spec["components"]["schemas"][name]
-        if "hold" not in schema.get("properties", {}):
+        op = spec["paths"][path]["post"]
+
+        # A query parameter counts: /image/print also accepts a raw image body,
+        # and a caller sending raw bytes has no form or JSON object to put the
+        # flag in, so it goes in the query string instead.
+        if any(p.get("name") == "hold" for p in op.get("parameters", [])):
+            continue
+
+        # Otherwise it must be in one of the request body schemas. Check them
+        # all rather than the first: the raw-body content types are declared
+        # ahead of multipart on /image/print.
+        found = False
+        for media in op["requestBody"]["content"].values():
+            schema = media.get("schema", {})
+            if "$ref" in schema:
+                name = schema["$ref"].rsplit("/", 1)[-1]
+                schema = spec["components"]["schemas"][name]
+            if "hold" in schema.get("properties", {}):
+                found = True
+                break
+        if not found:
             missing.append(path)
     assert not missing, f"endpoints missing the hold flag: {missing}"
 
@@ -248,3 +263,60 @@ def test_amend_keeps_the_file_when_none_is_given(queue):
     job_id = queue.hold("image", "Old", file_path="/tmp/a.png", fn=lambda: None)
     queue.amend(job_id, "New", lambda: None)
     assert queue.get_file_path(job_id) == "/tmp/a.png"
+
+
+# --------------------------------------------------------------------------
+# Raw image bodies, for callers that cannot do multipart
+# --------------------------------------------------------------------------
+
+def _img_ctx(data, mimetype):
+    """A request context carrying a raw body."""
+    from flask import Flask
+    app = Flask(__name__)
+    return app.test_request_context(
+        "/api/v1/image/print", method="POST", data=data,
+        content_type=mimetype)
+
+
+def test_raw_png_body_is_accepted():
+    from src.api.image_controller import _read_raw_image_body
+    png = b"\x89PNG\r\n\x1a\n" + b"rest"
+    with _img_ctx(png, "application/x-www-form-urlencoded"):
+        # BusyBox wget's default content type -- deliberately not an image one.
+        assert _read_raw_image_body() == png
+
+
+def test_multipart_is_left_to_the_normal_path():
+    from src.api.image_controller import _read_raw_image_body
+    with _img_ctx(b"whatever", "multipart/form-data; boundary=x"):
+        assert _read_raw_image_body() is None
+
+
+def test_non_image_body_is_not_treated_as_raw():
+    """A mis-sent form must not become a confusing 'invalid image' later."""
+    from src.api.image_controller import _read_raw_image_body
+    with _img_ctx(b"settings=%7B%7D&hold=true", "application/x-www-form-urlencoded"):
+        assert _read_raw_image_body() is None
+
+
+def test_empty_body_is_not_raw():
+    from src.api.image_controller import _read_raw_image_body
+    with _img_ctx(b"", "application/x-www-form-urlencoded"):
+        assert _read_raw_image_body() is None
+
+
+def test_raw_body_reads_options_from_the_query_string():
+    """A raw caller has no form, so flags arrive as query parameters."""
+    from flask import Flask
+    from src.api.image_controller import _opt
+    app = Flask(__name__)
+    with app.test_request_context("/api/v1/image/print?hold=true", method="POST",
+                                  data=b"\x89PNG\r\n\x1a\n",
+                                  content_type="image/png"):
+        assert _opt("hold") == "true"
+
+
+def test_jpeg_is_recognised_too():
+    from src.api.image_controller import _looks_like_image
+    assert _looks_like_image(b"\xff\xd8\xff" + b"x")
+    assert not _looks_like_image(b"not an image")
