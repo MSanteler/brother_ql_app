@@ -1,5 +1,6 @@
 """
-Shared helpers that reject a print request before it reaches the queue.
+Shared helpers that decide what happens to a print request before it reaches
+the queue.
 
 Two guards live here:
 
@@ -11,7 +12,13 @@ Two guards live here:
   the queue's job record, long after the caller was told "queued".
 
 Both raise before anything is enqueued, so the caller learns immediately.
+
+Alongside them, ``dispatch_job`` decides *whether* the job prints at all: every
+submission endpoint accepts ``hold``, and the branch is identical in all of
+them, so it lives here once rather than six times.
 """
+
+from typing import Any, Callable, Dict, Optional
 
 import structlog
 
@@ -58,6 +65,74 @@ def enforce_large_batch_confirmation(copies, confirmed: bool) -> None:
         n = 1
     if n >= LARGE_BATCH_THRESHOLD and not confirmed:
         raise ConfirmationRequiredError(n, LARGE_BATCH_THRESHOLD)
+
+
+def guard_and_dispatch(
+    job_type: str,
+    label: str,
+    fn: Callable[[], Any],
+    settings,
+    *,
+    hold,
+    confirm_large_batch=None,
+    params: Optional[Dict[str, Any]] = None,
+    file_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Apply the pre-queue guards, then either print or hold.
+
+    Every submission endpoint ends the same way, so the tail lives here once:
+    check the media, check the batch size, then submit or hold and build the
+    response. The endpoints differ only in how they build ``fn`` and ``params``.
+
+    THE MEDIA GUARD IS SKIPPED WHEN HOLDING, on purpose. Nothing is about to
+    print, and a label sitting under review is exactly when the roll is most
+    likely to be swapped. Checking here would reject labels composed for the
+    roll you are about to load -- the same reason previews are not guarded.
+    ``/jobs/{id}/release`` runs the check instead, against whatever is loaded at
+    the moment paper would actually move.
+
+    Args:
+        job_type: Short type tag ("text", "qrcode", "label", "pdf", "image").
+        label: Human-readable job label for the queue UI.
+        fn: Argument-less callable that performs the print.
+        settings: Resolved print settings, checked against the loaded media.
+        hold: Raw ``hold`` value from the request; parsed leniently.
+        confirm_large_batch: Raw confirmation value from the request.
+        params: Serializable job inputs, stored on the job record.
+        file_path: Persisted file backing the job, for image/pdf jobs.
+
+    Returns:
+        The endpoint's response dict, with ``held: True`` when held.
+    """
+    holding = is_confirmed(hold)
+
+    if not holding:
+        enforce_media_match(settings)
+
+    enforce_large_batch_confirmation(
+        (settings or {}).get("copies", 1), is_confirmed(confirm_large_batch)
+    )
+
+    # Imported here, not at module scope: queue_service imports this module.
+    from src.services.queue_service import print_queue
+
+    if holding:
+        job_id = print_queue.hold(
+            job_type, label, params=params, file_path=file_path, fn=fn
+        )
+        logger.info("Print job held for review", job_id=job_id, type=job_type)
+        return {
+            "success": True,
+            "job_id": job_id,
+            "held": True,
+            "message": "Label held for review -- release it to print",
+        }
+
+    job_id = print_queue.submit(
+        job_type, label, fn, params=params, file_path=file_path
+    )
+    logger.info("Print job queued", job_id=job_id, type=job_type)
+    return {"success": True, "job_id": job_id, "message": "Print job queued"}
 
 
 def enforce_media_match(settings) -> None:

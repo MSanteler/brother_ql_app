@@ -128,9 +128,9 @@ def test_release_endpoint_enforces_media_match():
 def test_hold_path_skips_the_guard_at_submit_time():
     """Holding is when the roll is most likely still to be changed.
 
-    The guard must be conditional on not holding, not removed: the immediate
-    print path still needs it.
+    The guard must be conditional on holding, not removed: the immediate print
+    path still needs it. Both live in the shared dispatch helper.
     """
-    src = _source_of("src.api.text_controller", "print_text")
-    assert "if not hold:" in src
+    src = _source_of("src.utils.print_guard", "guard_and_dispatch")
+    assert "if not holding:" in src
     assert "enforce_media_match(settings)" in src
