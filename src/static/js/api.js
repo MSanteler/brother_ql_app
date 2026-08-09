@@ -2425,12 +2425,19 @@ function renderJobs(jobs) {
         const releaseBtn = job.can_release === true
             ? `<button type="button" class="btn-ghost btn-sm queue-release" data-action="release" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-printer"></i> Print</button>`
             : '';
-        // Open loads the job's FILE into the composer, so it needs one. Image
-        // and pdf jobs persist a file; text and qr jobs do not, and offering
-        // "Review" on those gave a button that 404s -- which is what a held
-        // text+QR label from the voice flow looked like.
-        const hasFile = job.type === 'image' || job.type === 'pdf';
-        const openBtn = (hasFile && (job.can_reprint === true || job.status === 'held'))
+        // Open restores a job into the composer. Text, qrcode and label jobs
+        // rebuild from params alone; image and pdf additionally need their
+        // stored file, so they need one to exist.
+        //
+        // Reviewing before printing is the entire point of holding a job, so
+        // this must stay available on held jobs -- gating it on having a file
+        // took the button away from exactly the labels most worth checking.
+        // A held image job (from /image/compose) has can_reprint false but does
+        // have its file, so held must count as "the file is there" too.
+        const needsFile = job.type === 'image' || job.type === 'pdf';
+        const hasFile = job.can_reprint === true || job.status === 'held';
+        const canRestore = job.params != null && (!needsFile || hasFile);
+        const openBtn = (canRestore && (job.can_reprint === true || job.status === 'held'))
             ? `<button type="button" class="btn-ghost btn-sm queue-open" data-action="open" data-job-id="${escapeHtml(job.id)}"><i class="bi bi-box-arrow-up-right"></i> ${job.status === 'held' ? 'Review' : 'Open'}</button>`
             : '';
         const reprintBtns = reprintBtn + releaseBtn + openBtn;
