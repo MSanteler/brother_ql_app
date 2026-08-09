@@ -9,6 +9,7 @@ every one of them, and none can do an interactive sign-in.
 import base64
 import inspect
 import json
+import pathlib
 import os
 import time
 
@@ -333,3 +334,31 @@ def test_proxy_fix_is_applied_when_oidc_is_on():
     assert oidc.register_oidc(app) is True
     assert app.wsgi_app is not original, "ProxyFix was not applied"
     assert type(app.wsgi_app).__name__ == "ProxyFix"
+
+
+def test_session_auth_is_a_separate_security_entry():
+    """Alternatives, not a conjunction.
+
+    connexion reads `security` as a list of alternatives, each entry being a
+    conjunction of the schemes inside it. Both schemes in ONE entry would
+    demand a key AND a session; separate entries mean either will do, which is
+    what services-vs-people needs.
+    """
+    src = pathlib.Path("src/app.py").read_text()
+    assert "spec['security'] = [{'ApiKeyAuth': []}]" in src
+    assert "spec['security'].append({'SessionAuth': []})" in src
+
+
+def test_session_auth_is_dropped_when_oidc_is_off():
+    """No session scheme should be advertised when sessions do not exist."""
+    src = pathlib.Path("src/app.py").read_text()
+    assert "schemes.pop('SessionAuth', None)" in src
+
+
+def test_session_info_does_not_trust_the_raw_cookie():
+    """Flask verifies the signature; this must re-read the session, not parse it."""
+    from src.utils import auth
+    src = inspect.getsource(auth.session_info)
+    assert "current_user()" in src
+    # the cookie parameter must not be inspected for identity
+    assert "cookie ==" not in src and "cookie)" not in src.split('"""')[-1]

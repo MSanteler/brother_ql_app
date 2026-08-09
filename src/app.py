@@ -141,11 +141,29 @@ def create_app():
     with open(spec_path, encoding='utf-8') as spec_file:
         spec = yaml.safe_load(spec_file)
     if auth_enabled():
+        schemes = spec['components']['securitySchemes']
+        schemes['ApiKeyAuth']['x-apikeyInfoFunc'] = 'src.utils.auth.apikey_info'
+
+        # Two ALTERNATIVES, as separate list entries. A single entry holding
+        # both schemes would mean "and", requiring a key AND a session; separate
+        # entries mean "or", which is what is wanted -- services present a key,
+        # people present a session.
+        #
+        # Without SessionAuth the bundled UI cannot call its own API: connexion
+        # enforces this security block before any before_request hook, so a
+        # signed-in browser with no X-API-Key was rejected with "No auth
+        # provided" and the queue rendered empty while the page loaded fine.
         spec['security'] = [{'ApiKeyAuth': []}]
-        spec['components']['securitySchemes']['ApiKeyAuth']['x-apikeyInfoFunc'] = 'src.utils.auth.apikey_info'
-        logger.info("API-key authentication enforced on documented operations")
+        if oidc_enabled():
+            schemes['SessionAuth']['x-apikeyInfoFunc'] = 'src.utils.auth.session_info'
+            spec['security'].append({'SessionAuth': []})
+            logger.info("API-key or signed-in session accepted on documented operations")
+        else:
+            schemes.pop('SessionAuth', None)
+            logger.info("API-key authentication enforced on documented operations")
     else:
         spec.pop('security', None)
+        spec['components']['securitySchemes'].pop('SessionAuth', None)
     connexion_app.add_api(spec,
                          validate_responses=True,
                          options={"swagger_ui": swagger_ui})

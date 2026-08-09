@@ -1268,6 +1268,20 @@ components:
         Optional API key. When the API_KEY environment variable is set on the
         server, send the matching key in the X-API-Key header for all
         /api/v1/* requests (UI, Swagger UI and health endpoints are exempt).
+    SessionAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: >-
+        The bundled UI's own session cookie, set by signing in at /auth/login
+        when OIDC_ENABLED is on.
+
+        This exists because connexion enforces the declared `security` itself,
+        before any Flask before_request hook runs. With only ApiKeyAuth
+        declared, a signed-in browser -- which sends a session cookie and no
+        X-API-Key -- was rejected with "No auth provided" and the UI could not
+        call its own API at all. Declaring both makes them alternatives:
+        connexion tries each until one succeeds.
   schemas:
     JobStatus:
       type: object

@@ -57,3 +57,24 @@ def apikey_info(apikey, required_scopes=None):
     if is_valid_api_key(apikey):
         return {"sub": "apikey"}
     return None
+
+
+def session_info(cookie, required_scopes=None):
+    """connexion callback for the SessionAuth scheme.
+
+    A signed-in browser is an identity too, and connexion has to be told so:
+    it enforces the declared `security` before any before_request hook runs, so
+    with only ApiKeyAuth declared the bundled UI could not call its own API --
+    every request was rejected with "No auth provided" while the page itself
+    loaded fine.
+
+    The cookie value is not inspected here. Flask has already verified its
+    signature by the time this runs, and ``current_user`` re-reads the session
+    and enforces expiry; trusting the raw cookie text instead would be a way
+    in for anything cookie-shaped.
+    """
+    from src.utils.oidc import current_user, oidc_enabled
+
+    if oidc_enabled() and current_user():
+        return {"sub": "session"}
+    return None
