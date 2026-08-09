@@ -244,6 +244,52 @@ class PrintQueueService:
                     type=job_type, label=label, releasable=fn is not None)
         return job_id
 
+    def amend(
+        self,
+        job_id: str,
+        label: str,
+        fn: Callable[[], Any],
+        params: Optional[Dict[str, Any]] = None,
+        file_path: Optional[str] = None,
+    ) -> str:
+        """Replace a held job's content, keeping its id and its held status.
+
+        For the review loop: a label is held, opened in the composer, adjusted,
+        and saved back. Without this the only way to change a held job was to
+        submit a new one and delete the old, which is the workaround holding
+        was written to remove -- and it leaves the queue littered with
+        near-duplicates while you iterate on a single label.
+
+        Only held jobs can be amended. A queued job is already on its way to the
+        printer and a finished one has printed; rewriting either would make the
+        record disagree with what happened.
+
+        The type is deliberately NOT changed: a job's type describes what it is,
+        and turning a text job into a pdf one mid-review would invalidate the
+        params a caller may already be holding.
+
+        Raises:
+            KeyError: No such job.
+            ValueError: The job is not held.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(job_id)
+            if job["status"] != "held":
+                raise ValueError(f"job is {job['status']}, not held")
+
+            job["label"] = label
+            job["params"] = copy.deepcopy(params) if params else {}
+            job["can_release"] = fn is not None
+            self._executors[job_id] = fn
+            # Drop the old file only when a new one replaces it; a text job
+            # amended from a text job never had one either way.
+            if file_path is not None:
+                self._files[job_id] = file_path
+        logger.info("Held print job amended", job_id=job_id, label=label)
+        return job_id
+
     def release(self, job_id: str) -> str:
         """Enqueue a held job for printing, in place.
 

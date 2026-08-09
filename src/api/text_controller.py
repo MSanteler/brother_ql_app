@@ -68,6 +68,7 @@ def print_text(body: Dict[str, Any]) -> Dict[str, Any]:
             "text", _short_label(text), job, settings,
             hold=body.get("hold"),
             confirm_large_batch=body.get("confirm_large_batch"),
+            amend_job_id=body.get("amend_job_id"),
             params=params,
         )
     except ConfirmationRequiredError:

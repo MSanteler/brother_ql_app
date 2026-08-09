@@ -77,6 +77,7 @@ def guard_and_dispatch(
     confirm_large_batch=None,
     params: Optional[Dict[str, Any]] = None,
     file_path: Optional[str] = None,
+    amend_job_id=None,
 ) -> Dict[str, Any]:
     """Apply the pre-queue guards, then either print or hold.
 
@@ -123,6 +124,29 @@ def guard_and_dispatch(
     # Imported here, not at module scope: queue_service imports this module.
     from src.services.queue_service import print_queue
 
+    # Amending replaces a held job in place rather than adding another. This is
+    # the review loop: hold a label, open it, adjust it, save it back. Without
+    # it the only way to change a held label was to submit a new one and delete
+    # the old, which is the workaround holding exists to remove.
+    #
+    # Only meaningful while still holding; `hold=false` with an amend id means
+    # "print this instead of what was held", handled below by releasing.
+    if amend_job_id and holding:
+        try:
+            print_queue.amend(str(amend_job_id), label, fn,
+                              params=params, file_path=file_path)
+        except KeyError:
+            raise ValidationError("No such print job", "amend_job_id")
+        except ValueError as e:
+            raise ValidationError(str(e), "amend_job_id")
+        return {
+            "success": True,
+            "job_id": str(amend_job_id),
+            "held": True,
+            "amended": True,
+            "message": "Held label updated",
+        }
+
     if holding:
         job_id = print_queue.hold(
             job_type, label, params=params, file_path=file_path, fn=fn
@@ -134,6 +158,23 @@ def guard_and_dispatch(
             "held": True,
             "message": "Label held for review -- release it to print",
         }
+
+    # Printing a job that was opened from a held one: amend it and release it,
+    # so the held entry becomes the printed entry. Submitting a new job here
+    # would leave the original sitting in the queue as a stale near-duplicate
+    # of something that has already printed.
+    if amend_job_id:
+        try:
+            print_queue.amend(str(amend_job_id), label, fn,
+                              params=params, file_path=file_path)
+            print_queue.release(str(amend_job_id))
+        except KeyError:
+            raise ValidationError("No such print job", "amend_job_id")
+        except ValueError as e:
+            raise ValidationError(str(e), "amend_job_id")
+        logger.info("Held job amended and released", job_id=str(amend_job_id))
+        return {"success": True, "job_id": str(amend_job_id),
+                "message": "Print job queued"}
 
     job_id = print_queue.submit(
         job_type, label, fn, params=params, file_path=file_path

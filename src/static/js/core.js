@@ -702,6 +702,29 @@ function setupQueue() {
         });
     }
 
+    // "Save changes" and "stop editing" on the injected editing banner.
+    //
+    // Delegated on document because refreshComposerMode adds and removes these
+    // elements as a held job is opened and closed.
+    document.addEventListener('click', event => {
+        const save = event.target.closest('[data-save-held]');
+        if (save) {
+            const form = save.closest('form');
+            if (!form) return;
+            // Re-run the form's own print path with hold=true, so the label is
+            // built exactly as printing would build it and only the disposition
+            // differs. saveHeldOnly is read by the submit handlers.
+            window.saveHeldOnly = true;
+            form.requestSubmit();
+            return;
+        }
+
+        const discard = event.target.closest('[data-discard-held]');
+        if (discard && typeof clearOpenedJob === 'function') {
+            clearOpenedJob();
+        }
+    });
+
     // Keep the sidebar badge fresh from load on, even before the Queue tab is
     // first opened.
     if (typeof refreshJobs === 'function') refreshJobs();

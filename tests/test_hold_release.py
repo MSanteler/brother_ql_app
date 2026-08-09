@@ -187,3 +187,64 @@ def test_hold_path_skips_the_guard_at_submit_time():
     src = _source_of("src.utils.print_guard", "guard_and_dispatch")
     assert "if not holding:" in src
     assert "enforce_media_match(settings)" in src
+
+
+# --------------------------------------------------------------------------
+# amend(): the review loop
+# --------------------------------------------------------------------------
+
+def test_amend_replaces_content_in_place(queue):
+    job_id = queue.hold("text", "Old", params={"text": "old"}, fn=lambda: None)
+    queue.amend(job_id, "New", lambda: None, params={"text": "new"})
+    job = queue.get(job_id)
+    assert job["label"] == "New"
+    assert job["params"]["text"] == "new"
+
+
+def test_amend_keeps_the_job_held(queue):
+    """Amending is editing, not printing."""
+    job_id = queue.hold("text", "Old", fn=lambda: None)
+    queue.amend(job_id, "New", lambda: None)
+    assert queue.get(job_id)["status"] == "held"
+    assert queue._queue.qsize() == 0
+
+
+def test_amend_keeps_the_same_id(queue):
+    job_id = queue.hold("text", "Old", fn=lambda: None)
+    assert queue.amend(job_id, "New", lambda: None) == job_id
+
+
+def test_amend_swaps_the_executor(queue):
+    """Otherwise releasing would print the pre-edit label."""
+    job_id = queue.hold("text", "Old", fn=lambda: "old")
+    new_fn = lambda: "new"
+    queue.amend(job_id, "New", new_fn)
+    queue.release(job_id)
+    _, queued_fn = queue._queue.get_nowait()
+    assert queued_fn is new_fn
+
+
+def test_amend_refuses_a_queued_job(queue):
+    """It is already on its way to the printer."""
+    job_id = queue.submit("text", "x", lambda: None)
+    with pytest.raises(ValueError, match="not held"):
+        queue.amend(job_id, "New", lambda: None)
+
+
+def test_amend_refuses_an_unknown_job(queue):
+    with pytest.raises(KeyError):
+        queue.amend("nope", "New", lambda: None)
+
+
+def test_amend_does_not_change_the_type(queue):
+    """A caller may already hold params shaped by the original type."""
+    job_id = queue.hold("text", "Old", fn=lambda: None)
+    queue.amend(job_id, "New", lambda: None)
+    assert queue.get(job_id)["type"] == "text"
+
+
+def test_amend_keeps_the_file_when_none_is_given(queue):
+    """A text job amended from a text job never had one; do not clear it."""
+    job_id = queue.hold("image", "Old", file_path="/tmp/a.png", fn=lambda: None)
+    queue.amend(job_id, "New", lambda: None)
+    assert queue.get_file_path(job_id) == "/tmp/a.png"

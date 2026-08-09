@@ -439,6 +439,39 @@ body.dark-mode .btn-print { color: #06222B; }
 .btn-print:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
 .btn-print:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
 .btn-print:active { transform: translateY(1px); }
+
+/* "Save changes" sits beside "Print now" while a held label is being edited.
+   Quieter than the print button on purpose: saving is the reversible one, and
+   the primary weight belongs on the action that moves paper. */
+.btn-print.btn-secondary {
+    background: transparent;
+    border-color: var(--border);
+    color: var(--ink);
+    margin-bottom: 8px;
+}
+body.dark-mode .btn-print.btn-secondary { color: var(--ink); }
+.btn-print.btn-secondary:hover {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+/* Editing banner above the buttons. Dashed to match the "Held" queue badge --
+   the same state, seen from the other side. */
+.editing-banner {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
+    border-radius: 8px;
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+    font-size: 13px;
+}
+.editing-banner .btn-link {
+    background: none; border: none; padding: 0;
+    color: var(--accent-strong);
+    font: inherit; text-decoration: underline; cursor: pointer;
+}
 .btn-print:disabled { opacity: .55; cursor: not-allowed; }
 /* Blocked because the chosen label cannot print on the loaded roll -- a state
    the user can fix, not a broken button. Neutral rather than accent-coloured so
