@@ -235,6 +235,7 @@ def test_cookie_is_configured_for_framing(monkeypatch):
         def __init__(self):
             self.config = {}
             self.routes = []
+            self.wsgi_app = lambda environ, start_response: None
 
         def route(self, rule, **kw):
             def deco(fn):
@@ -258,6 +259,7 @@ def test_incomplete_config_does_not_enable_and_does_not_crash():
 
     class FakeApp:
         config = {}
+        wsgi_app = staticmethod(lambda environ, start_response: None)
 
         def route(self, *a, **kw):
             return lambda fn: fn
@@ -303,3 +305,31 @@ def test_api_key_still_required_when_oidc_is_off():
     """Deferring must not become a way in when there is no session either."""
     src = _register_auth_source()
     assert 'return jsonify({"error": "unauthorized"}), 401' in src
+
+
+def test_proxy_fix_is_applied_when_oidc_is_on():
+    """Secure cookies need the forwarded scheme, or none are ever set.
+
+    TLS terminates at the ALB and again at nginx, so without ProxyFix the app
+    sees http, Flask silently declines to set a Secure cookie, and /auth/login
+    returns its redirect with no Set-Cookie at all -- no error anywhere, just a
+    session that never forms.
+    """
+    _configure()
+
+    class FakeApp:
+        def __init__(self):
+            self.config = {}
+            self.wsgi_app = lambda environ, start_response: None
+
+        def route(self, *a, **kw):
+            return lambda fn: fn
+
+        def before_request(self, fn):
+            return fn
+
+    app = FakeApp()
+    original = app.wsgi_app
+    assert oidc.register_oidc(app) is True
+    assert app.wsgi_app is not original, "ProxyFix was not applied"
+    assert type(app.wsgi_app).__name__ == "ProxyFix"

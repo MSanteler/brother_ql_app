@@ -175,6 +175,20 @@ def register_oidc(app):
         SESSION_COOKIE_HTTPONLY=True,
     )
 
+    # Trust the proxy's X-Forwarded-Proto, or SESSION_COOKIE_SECURE above is a
+    # trap: TLS terminates at the ALB and again at nginx, so the app sees plain
+    # HTTP and Flask silently refuses to SET a Secure cookie. The symptom is not
+    # an error anywhere -- /auth/login just returns its redirect with no
+    # Set-Cookie, so state/nonce/verifier are never stored, the callback finds
+    # no session, and the UI's own API calls look unauthenticated forever.
+    #
+    # x_proto=1 only: the ALB and nginx are the sole proxies in front, and
+    # trusting forwarded host or prefix would let a client rewrite what the app
+    # thinks it is, which OIDC_REDIRECT_BASE deliberately pins instead.
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1)
+
     _register_routes(app, conf)
     _register_gate(app)
 
