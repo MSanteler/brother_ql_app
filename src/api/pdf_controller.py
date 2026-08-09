@@ -17,11 +17,7 @@ from src.services.queue_service import print_queue
 from src.services.settings_service import settings_service
 from src.services.pdf_renderer import render_pdf_thumbnails
 from src.utils.exceptions import ValidationError, PrinterError, ConfirmationRequiredError
-from src.utils.print_guard import (
-    enforce_large_batch_confirmation,
-    enforce_media_match,
-    is_confirmed,
-)
+from src.utils.print_guard import guard_and_dispatch
 from src.utils.dry_run import is_dry_run, build_dry_run_response
 
 logger = structlog.get_logger()
@@ -80,16 +76,6 @@ def print_pdf() -> Dict[str, Any]:
         if scale_mode not in ('fit', 'fill'):
             raise ValidationError("scale_mode must be 'fit' or 'fill'", "scale_mode")
 
-        # Reject a label size the loaded media cannot print, before the job
-        # is queued -- printing is asynchronous, so an error raised during
-        # the print never reaches the caller.
-        enforce_media_match(settings)
-
-        # Large batches require explicit confirmation before enqueuing.
-        enforce_large_batch_confirmation(
-            settings.get("copies", 1), is_confirmed(request.form.get("confirm_large_batch"))
-        )
-
         # Dry run: validate settings + reachability, but do not save/print.
         if is_dry_run(request.form.get("dry_run")):
             return build_dry_run_response(settings, None)
@@ -116,12 +102,12 @@ def print_pdf() -> Dict[str, Any]:
             "scale_mode": scale_mode,
             "settings": settings,
         }
-        job_id = print_queue.submit(
-            "pdf", label, job, params=params, file_path=stored_path
+        return guard_and_dispatch(
+            "pdf", label, job, settings,
+            hold=request.form.get("hold"),
+            confirm_large_batch=request.form.get("confirm_large_batch"),
+            params=params, file_path=stored_path,
         )
-        logger.info("PDF print job queued", job_id=job_id, path=stored_path)
-
-        return {"success": True, "job_id": job_id, "message": "Print job queued"}
     except ConfirmationRequiredError:
         raise
     except (ValidationError, ValueError) as e:

@@ -110,13 +110,31 @@ def _source_of(module_name, func_name):
     return inspect.getsource(getattr(module, func_name))
 
 
+# Reaching the guard counts either way: directly, or through the shared
+# dispatch helper that calls it (and skips it only for held jobs, which are
+# re-checked at release).
+GUARD_MARKERS = ("enforce_media_match", "guard_and_dispatch")
+
+
 def test_every_print_endpoint_enforces_media_match():
     """A print path that skips the guard reintroduces the silent-discard bug."""
     missing = [
         f"{m}.{f}" for m, f in PRINT_CONTROLLERS
-        if "enforce_media_match" not in _source_of(m, f)
+        if not any(marker in _source_of(m, f) for marker in GUARD_MARKERS)
     ]
     assert not missing, f"print endpoints missing the media guard: {missing}"
+
+
+def test_dispatch_helper_still_enforces_the_guard():
+    """The indirection above is only safe while the helper actually checks.
+
+    Without this, a print endpoint could satisfy the test by calling a helper
+    that had quietly stopped guarding anything.
+    """
+    src = _source_of("src.utils.print_guard", "guard_and_dispatch")
+    assert "enforce_media_match(settings)" in src
+    # ...and only skips it for held jobs, which release re-checks.
+    assert "if not holding:" in src
 
 
 def test_no_preview_endpoint_enforces_media_match():

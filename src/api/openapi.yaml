@@ -199,6 +199,14 @@ paths:
 
         No media guard: nothing is printed, and holding a label for review is
         exactly when the roll is most likely still to be changed.
+
+        EQUIVALENT TO `POST /image/print` with `hold=true`, which is the form
+        to prefer in new callers. This path is kept because Homebox's
+        PRINT_COMMAND points at it and that value lives in AWS Secrets Manager,
+        so changing it is a deploy rather than an edit. The one behavioural
+        difference is that a job held here has no executor, so it must be
+        reopened in the composer; `/image/print` with `hold=true` can also be
+        released directly via /jobs/{job_id}/release.
       operationId: api.image_controller.compose_image
       tags:
         - image
@@ -257,6 +265,15 @@ paths:
                     Set to "true" to confirm large batches. Required when
                     settings.copies >= 10, otherwise the request is rejected
                     with code CONFIRMATION_REQUIRED.
+                  example: "true"
+                hold:
+                  type: string
+                  description: >-
+                    Set to "true" to record the job as HELD instead of printing
+                    it. Nothing reaches the printer until
+                    POST /jobs/{job_id}/release. The media guard is skipped here
+                    and enforced at release, against whatever roll is loaded
+                    then.
                   example: "true"
                 dry_run:
                   type: string
@@ -357,6 +374,15 @@ paths:
                     Set to "true" to confirm large batches. Required when
                     settings.copies >= 10, otherwise the request is rejected
                     with code CONFIRMATION_REQUIRED.
+                  example: "true"
+                hold:
+                  type: string
+                  description: >-
+                    Set to "true" to record the job as HELD instead of printing
+                    it. Nothing reaches the printer until
+                    POST /jobs/{job_id}/release. The media guard is skipped here
+                    and enforced at release, against whatever roll is loaded
+                    then.
                   example: "true"
                 dry_run:
                   type: string
@@ -608,6 +634,15 @@ paths:
                     settings.copies >= 10, otherwise the request is rejected
                     with code CONFIRMATION_REQUIRED.
                   example: "true"
+                hold:
+                  type: string
+                  description: >-
+                    Set to "true" to record the job as HELD instead of printing
+                    it. Nothing reaches the printer until
+                    POST /jobs/{job_id}/release. The media guard is skipped here
+                    and enforced at release, against whatever roll is loaded
+                    then.
+                  example: "true"
                 dry_run:
                   type: string
                   description: >-
@@ -805,6 +840,45 @@ paths:
                     type: string
                     description: Identifier of the newly created reprint job
                     example: "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /jobs/{job_id}/release:
+    post:
+      summary: Print a job that was held for review
+      description: >-
+        The counterpart to submitting with `hold`. Enqueues the held job for
+        printing, keeping its id -- a held job has never printed, so releasing
+        it is that job finally happening rather than a new one.
+
+        The media guard runs HERE rather than at hold time, because a label
+        under review is exactly when the roll is most likely to be changed. A
+        job held against 50mm tape and released after a swap to 62mm is
+        rejected with 400 instead of being silently discarded by the printer.
+
+        400 when the job is not held, or was held as a file with no executor
+        (an `/image/compose` upload) -- those are re-composed in the UI.
+      operationId: api.jobs_controller.release_job
+      tags:
+        - jobs
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Identifier of the held print job to release
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Held job queued for printing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrintResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
@@ -1165,6 +1239,7 @@ paths:
                 settings: { $ref: '#/components/schemas/PrintSettings' }
                 confirm_large_batch: { type: boolean, default: false }
                 dry_run: { type: boolean, default: false }
+                hold: { type: boolean, default: false }
       responses:
         '200':
           description: Queued
@@ -1416,6 +1491,14 @@ components:
             Confirm large batches. Required (true) when settings.copies >= 10,
             otherwise the request is rejected with code CONFIRMATION_REQUIRED.
           default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. The media guard is
+            skipped here and enforced at release, against whatever roll is
+            loaded then.
+          default: false
         dry_run:
           type: boolean
           description: >-
@@ -1425,7 +1508,7 @@ components:
           default: false
       required:
         - text
-        
+
     TextQRCodeLabelRequest:
       type: object
       properties:
@@ -1507,6 +1590,14 @@ components:
           description: >-
             Confirm large batches. Required (true) when settings.copies >= 10,
             otherwise the request is rejected with code CONFIRMATION_REQUIRED.
+          default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. The media guard is
+            skipped here and enforced at release, against whatever roll is
+            loaded then.
           default: false
         dry_run:
           type: boolean
@@ -1599,6 +1690,14 @@ components:
           description: >-
             Confirm large batches. Required (true) when settings.copies >= 10,
             otherwise the request is rejected with code CONFIRMATION_REQUIRED.
+          default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. The media guard is
+            skipped here and enforced at release, against whatever roll is
+            loaded then.
           default: false
         dry_run:
           type: boolean

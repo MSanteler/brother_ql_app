@@ -9,11 +9,7 @@ from src.services.printer_service import printer_service
 from src.services.queue_service import print_queue
 from src.services.settings_service import settings_service
 from src.utils.exceptions import ValidationError, PrinterError, ConfirmationRequiredError
-from src.utils.print_guard import (
-    enforce_large_batch_confirmation,
-    enforce_media_match,
-    is_confirmed,
-)
+from src.utils.print_guard import guard_and_dispatch
 from src.utils.dry_run import is_dry_run, build_dry_run_response
 
 logger = structlog.get_logger()
@@ -54,16 +50,6 @@ def print_text_qrcode_label(body: Dict[str, Any]) -> Dict[str, Any]:
         if not text_content:
             raise ValidationError("text.content is required", "text.content")
 
-        # Reject a label size the loaded media cannot print, before the job
-        # is queued -- printing is asynchronous, so an error raised during
-        # the print never reaches the caller.
-        enforce_media_match(settings)
-
-        # Large batches require explicit confirmation before enqueuing.
-        enforce_large_batch_confirmation(
-            settings.get("copies", 1), is_confirmed(body.get("confirm_large_batch"))
-        )
-
         # Get layout options
         qr_position = qr_settings.get("position", "right")  # "left" or "right"
         text_alignment = text_settings.get("alignment", "left")  # "left", "center", or "right"
@@ -102,12 +88,14 @@ def print_text_qrcode_label(body: Dict[str, Any]) -> Dict[str, Any]:
             "data": qr_data,
             "settings": combined_settings,
         }
-        job_id = print_queue.submit(
-            "label", "Text+QR: " + _short_label(text_content), job, params=params
+        # Guarded against combined_settings, which is what actually prints.
+        return guard_and_dispatch(
+            "label", "Text+QR: " + _short_label(text_content), job,
+            combined_settings,
+            hold=body.get("hold"),
+            confirm_large_batch=body.get("confirm_large_batch"),
+            params=params,
         )
-        logger.info("Text+QR code label print job queued", job_id=job_id)
-
-        return {"success": True, "job_id": job_id, "message": "Print job queued"}
     except ConfirmationRequiredError:
         raise
     except ValidationError as e:
