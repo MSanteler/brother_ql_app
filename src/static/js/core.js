@@ -678,8 +678,8 @@ function setupQueue() {
         });
     }
 
-    // Per-job action buttons (Cancel / Reprint / Open) via event delegation,
-    // since the rows are re-rendered on every poll.
+    // Per-job action buttons (Cancel / Reprint / Open / Print) via event
+    // delegation, since the rows are re-rendered on every poll.
     const list = document.getElementById('queue-list');
     if (list) {
         list.addEventListener('click', event => {
@@ -694,6 +694,8 @@ function setupQueue() {
                 reprintJob(jobId);
             } else if (action === 'open' && typeof openJob === 'function') {
                 openJob(jobId);
+            } else if (action === 'release' && typeof releaseJob === 'function') {
+                releaseJob(jobId);
             } else if (action === 'delete' && typeof deleteJob === 'function') {
                 deleteJob(jobId, btn.getAttribute('data-job-status'));
             }
