@@ -21,5 +21,13 @@ pypdfium2==4.30.0
 # singleton/thread stays in a single process (see docker-entrypoint.sh).
 gunicorn==23.0.0
 
+# OIDC token exchange. Was already present transitively (connexion pulls it in
+# for the Swagger UI), but src/utils/oidc.py imports it directly, so declare it
+# rather than rely on someone else's dependency staying put.
+#
+# A floor rather than a pin: the image already resolves a newer release, and
+# pinning here would silently downgrade it on the next rebuild.
+requests>=2.32.3
+
 # Logging and error handling
 structlog==23.1.0
