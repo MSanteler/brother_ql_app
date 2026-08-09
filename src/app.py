@@ -14,6 +14,7 @@ APP_VERSION = os.environ.get("APP_VERSION", "4.0.0-dev")
 from src.utils.error_handlers import register_error_handlers
 from src.utils.pillow_patch import apply_pillow_patch
 from src.utils.auth import auth_enabled, is_valid_api_key, API_KEY_HEADER
+from src.utils.oidc import register_oidc
 from src.services.printer_service import printer_service
 from src.services.settings_service import settings_service
 from src.services.queue_service import print_queue
@@ -109,6 +110,13 @@ def create_app():
 
     # Configure opt-in API-key authentication via a before_request hook.
     register_auth(app)
+
+    # Configure opt-in OIDC login, which protects the UI as well as the API.
+    #
+    # Registered after register_auth so the API-key hook runs first: a caller
+    # with a valid key is already authenticated and must not be asked to log in
+    # through a browser. Inert unless OIDC_ENABLED is set.
+    register_oidc(app)
 
     # Add the OpenAPI specification.
     # The Swagger UI is ON by default (it is living, self-documenting API docs).
