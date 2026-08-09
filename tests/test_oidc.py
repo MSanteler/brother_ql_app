@@ -7,6 +7,7 @@ every one of them, and none can do an interactive sign-in.
 """
 
 import base64
+import inspect
 import json
 import os
 import time
@@ -265,3 +266,40 @@ def test_incomplete_config_does_not_enable_and_does_not_crash():
             return fn
 
     assert oidc.register_oidc(FakeApp()) is False
+
+
+# --------------------------------------------------------------------------
+# The two auth schemes must be peers, not one shadowing the other
+# --------------------------------------------------------------------------
+
+def _register_auth_source():
+    """Read register_auth out of app.py without importing it.
+
+    src/app.py imports connexion at module scope, which is not stubbed here,
+    so inspect.getsource would need the real dependency just to read text.
+    """
+    import pathlib
+    src = pathlib.Path("src/app.py").read_text()
+    start = src.index("def register_auth(")
+    end = src.index("\ndef ", start + 1)
+    return src[start:end]
+
+def test_api_key_hook_defers_to_an_oidc_session():
+    """A signed-in browser sends no X-API-Key and must still reach the API.
+
+    Regression: the API-key hook runs first and used to reject outright, so
+    every /api/v1/* call the bundled UI made came back 401 even with a valid
+    session. The queue then rendered as empty rather than as an error, which
+    looked like held jobs were not being recorded at all.
+    """
+    src = _register_auth_source()
+    assert "oidc_enabled() and current_user()" in src, (
+        "the API-key hook must defer to a valid OIDC session")
+    # ...and the deferral has to come before the 401, or it is unreachable.
+    assert src.index("current_user()") < src.index('"unauthorized"')
+
+
+def test_api_key_still_required_when_oidc_is_off():
+    """Deferring must not become a way in when there is no session either."""
+    src = _register_auth_source()
+    assert 'return jsonify({"error": "unauthorized"}), 401' in src

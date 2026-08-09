@@ -1194,6 +1194,16 @@ body.dark-mode .queue-badge { color: #06222B; }
     background: color-mix(in srgb, var(--red) 12%, var(--panel));
 }
 .queue-status.cancelled { color: var(--muted-dim); border-color: var(--border-soft); opacity: .85; }
+/* Held: waiting for a person, not for the worker. Deliberately the accent
+   rather than a new colour -- the palette has only green and red besides it,
+   and both already mean something ("done", "failed") that this is not. The
+   dashed border is what separates it from `printing`, which shares the hue. */
+.queue-status.held {
+    color: var(--accent-strong);
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+    background: var(--accent-soft);
+}
 .queue-status .spinner-border-sm { width: 0.7rem; height: 0.7rem; border-width: 2px; }
 
 .queue-type {
