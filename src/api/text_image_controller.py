@@ -19,11 +19,7 @@ from src.utils.exceptions import (
     ImageProcessingError,
     ConfirmationRequiredError,
 )
-from src.utils.print_guard import (
-    enforce_large_batch_confirmation,
-    enforce_media_match,
-    is_confirmed,
-)
+from src.utils.print_guard import guard_and_dispatch
 from src.utils.dry_run import is_dry_run, build_dry_run_response
 
 # Reuse the image controller's persistent-upload helpers to avoid duplication.
@@ -104,16 +100,6 @@ def print_text_image() -> Dict[str, Any]:
             if setting not in settings:
                 raise ValidationError(f"{setting} is required", f"settings.{setting}")
 
-        # Reject a label size the loaded media cannot print, before the job
-        # is queued -- printing is asynchronous, so an error raised during
-        # the print never reaches the caller.
-        enforce_media_match(settings)
-
-        # Large batches require explicit confirmation before enqueuing.
-        enforce_large_batch_confirmation(
-            settings.get("copies", 1), is_confirmed(request.form.get("confirm_large_batch"))
-        )
-
         # Dry run: validate settings + reachability, but do not save/print.
         if is_dry_run(request.form.get("dry_run")):
             return build_dry_run_response(settings, None)
@@ -158,13 +144,12 @@ def print_text_image() -> Dict[str, Any]:
             "alignment": alignment,
             "position": position,
         }
-        job_id = print_queue.submit(
-            "label", "Text+Image: " + _short_label(text), job,
-            params=params, file_path=stored_path
+        return guard_and_dispatch(
+            "label", "Text+Image: " + _short_label(text), job, settings,
+            hold=request.form.get("hold"),
+            confirm_large_batch=request.form.get("confirm_large_batch"),
+            params=params, file_path=stored_path,
         )
-        logger.info("Text+image label print job queued", job_id=job_id, path=stored_path)
-
-        return {"success": True, "job_id": job_id, "message": "Print job queued"}
     except ConfirmationRequiredError:
         raise
     except ValidationError as e:

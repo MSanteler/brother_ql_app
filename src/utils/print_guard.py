@@ -91,6 +91,13 @@ def guard_and_dispatch(
     ``/jobs/{id}/release`` runs the check instead, against whatever is loaded at
     the moment paper would actually move.
 
+    Callers invoke this AFTER their dry-run branch, so a dry run no longer trips
+    the guard. That is deliberate and matches how previews already behave: a dry
+    run renders and checks reachability but never moves paper, and validating a
+    label for the roll you are about to load is a normal thing to do. It also
+    puts the check on the settings that actually print, which for QR and label
+    jobs is the combined dict rather than the resolved one.
+
     Args:
         job_type: Short type tag ("text", "qrcode", "label", "pdf", "image").
         label: Human-readable job label for the queue UI.

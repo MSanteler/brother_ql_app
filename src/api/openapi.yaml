@@ -199,6 +199,14 @@ paths:
 
         No media guard: nothing is printed, and holding a label for review is
         exactly when the roll is most likely still to be changed.
+
+        EQUIVALENT TO `POST /image/print` with `hold=true`, which is the form
+        to prefer in new callers. This path is kept because Homebox's
+        PRINT_COMMAND points at it and that value lives in AWS Secrets Manager,
+        so changing it is a deploy rather than an edit. The one behavioural
+        difference is that a job held here has no executor, so it must be
+        reopened in the composer; `/image/print` with `hold=true` can also be
+        released directly via /jobs/{job_id}/release.
       operationId: api.image_controller.compose_image
       tags:
         - image
@@ -257,6 +265,15 @@ paths:
                     Set to "true" to confirm large batches. Required when
                     settings.copies >= 10, otherwise the request is rejected
                     with code CONFIRMATION_REQUIRED.
+                  example: "true"
+                hold:
+                  type: string
+                  description: >-
+                    Set to "true" to record the job as HELD instead of printing
+                    it. Nothing reaches the printer until
+                    POST /jobs/{job_id}/release. The media guard is skipped here
+                    and enforced at release, against whatever roll is loaded
+                    then.
                   example: "true"
                 dry_run:
                   type: string
@@ -357,6 +374,15 @@ paths:
                     Set to "true" to confirm large batches. Required when
                     settings.copies >= 10, otherwise the request is rejected
                     with code CONFIRMATION_REQUIRED.
+                  example: "true"
+                hold:
+                  type: string
+                  description: >-
+                    Set to "true" to record the job as HELD instead of printing
+                    it. Nothing reaches the printer until
+                    POST /jobs/{job_id}/release. The media guard is skipped here
+                    and enforced at release, against whatever roll is loaded
+                    then.
                   example: "true"
                 dry_run:
                   type: string
@@ -607,6 +633,15 @@ paths:
                     Set to "true" to confirm large batches. Required when
                     settings.copies >= 10, otherwise the request is rejected
                     with code CONFIRMATION_REQUIRED.
+                  example: "true"
+                hold:
+                  type: string
+                  description: >-
+                    Set to "true" to record the job as HELD instead of printing
+                    it. Nothing reaches the printer until
+                    POST /jobs/{job_id}/release. The media guard is skipped here
+                    and enforced at release, against whatever roll is loaded
+                    then.
                   example: "true"
                 dry_run:
                   type: string
@@ -1204,6 +1239,7 @@ paths:
                 settings: { $ref: '#/components/schemas/PrintSettings' }
                 confirm_large_batch: { type: boolean, default: false }
                 dry_run: { type: boolean, default: false }
+                hold: { type: boolean, default: false }
       responses:
         '200':
           description: Queued
@@ -1455,6 +1491,14 @@ components:
             Confirm large batches. Required (true) when settings.copies >= 10,
             otherwise the request is rejected with code CONFIRMATION_REQUIRED.
           default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. The media guard is
+            skipped here and enforced at release, against whatever roll is
+            loaded then.
+          default: false
         dry_run:
           type: boolean
           description: >-
@@ -1462,19 +1506,9 @@ components:
             do not print or enqueue. Returns { ok, dry_run, printer_reachable,
             would_print: { label_size, copies, width_px, height_px } }.
           default: false
-        hold:
-          type: boolean
-          description: >-
-            Record the job as HELD instead of printing it. Nothing reaches the
-            printer until POST /jobs/{job_id}/release. For callers with no UI
-            of their own that still want a human to see the label first.
-
-            The media guard is skipped here and enforced at release, against
-            whatever roll is loaded then.
-          default: false
       required:
         - text
-        
+
     TextQRCodeLabelRequest:
       type: object
       properties:
@@ -1556,6 +1590,14 @@ components:
           description: >-
             Confirm large batches. Required (true) when settings.copies >= 10,
             otherwise the request is rejected with code CONFIRMATION_REQUIRED.
+          default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. The media guard is
+            skipped here and enforced at release, against whatever roll is
+            loaded then.
           default: false
         dry_run:
           type: boolean
@@ -1648,6 +1690,14 @@ components:
           description: >-
             Confirm large batches. Required (true) when settings.copies >= 10,
             otherwise the request is rejected with code CONFIRMATION_REQUIRED.
+          default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. The media guard is
+            skipped here and enforced at release, against whatever roll is
+            loaded then.
           default: false
         dry_run:
           type: boolean

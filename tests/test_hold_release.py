@@ -125,6 +125,59 @@ def test_release_endpoint_enforces_media_match():
     assert "enforce_media_match" in src
 
 
+def test_every_submission_endpoint_accepts_hold():
+    """Holding must be uniform.
+
+    A caller should not have to remember which endpoints can hold and which
+    cannot; that is how the pause-the-whole-queue workaround came about.
+    """
+    import yaml
+
+    spec = yaml.safe_load(open("src/api/openapi.yaml"))
+    submission_paths = [
+        "/text/print", "/qrcode/print", "/label/text-qrcode",
+        "/label/text-image", "/pdf/print", "/image/print",
+    ]
+    missing = []
+    for path in submission_paths:
+        body = spec["paths"][path]["post"]["requestBody"]["content"]
+        schema = next(iter(body.values()))["schema"]
+        if "$ref" in schema:
+            name = schema["$ref"].rsplit("/", 1)[-1]
+            schema = spec["components"]["schemas"][name]
+        if "hold" not in schema.get("properties", {}):
+            missing.append(path)
+    assert not missing, f"endpoints missing the hold flag: {missing}"
+
+
+def test_openapi_has_no_duplicate_keys():
+    """safe_load silently keeps the last of a duplicated key.
+
+    A second `hold:` added to a schema by a bulk edit would parse fine and
+    quietly shadow the first, so check explicitly.
+    """
+    import yaml
+
+    class Strict(yaml.SafeLoader):
+        pass
+
+    def no_dupes(loader, node, deep=False):
+        seen = set()
+        mapping = {}
+        for k, v in node.value:
+            key = loader.construct_object(k, deep=deep)
+            assert key not in seen, (
+                f"duplicate key {key!r} at line {k.start_mark.line + 1}")
+            seen.add(key)
+            mapping[key] = loader.construct_object(v, deep=deep)
+        return mapping
+
+    Strict.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, no_dupes)
+    with open("src/api/openapi.yaml") as fh:
+        yaml.load(fh, Loader=Strict)
+
+
 def test_hold_path_skips_the_guard_at_submit_time():
     """Holding is when the roll is most likely still to be changed.
 
