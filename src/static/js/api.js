@@ -2809,6 +2809,27 @@ function applySettingsToForm(settings) {
     setFieldValue('copies', settings.copies != null ? String(settings.copies) : null);
     setFieldValue('cut-mode', settings.cut_mode);
     setBoolField('dpi-600', settings.dpi_600);
+
+    // Restore the OVERRIDES as well, not just the saved-defaults fields above.
+    //
+    // #label-size and #rotate are the saved configuration; every preview and
+    // every print issued from the compose screen reads #preview-label-size and
+    // #preview-rotate instead (see activeLabelSize/activeRotate). Setting only
+    // the former meant reopening a job restored its size into a field nothing
+    // reads: a label held for 50mm continuous came back showing 12mm endless,
+    // and printing it would have used 12mm.
+    //
+    // That matters most for exactly the jobs worth reopening -- a held label is
+    // reviewed precisely to check the roll, rotation and scale.
+    // Only these two: rotate_mode, scale_mode and scale_percent are API-only by
+    // design (see "Not building the advanced scaling UI" in the fork's README),
+    // so there is no control to restore them into. They survive on the job and
+    // are re-sent unchanged when it is released; reopening a job in the
+    // composer and printing from there drops them to the form's defaults.
+    setFieldValue('preview-label-size', settings.label_size);
+    setFieldValue('preview-rotate', settings.rotate != null ? String(settings.rotate) : null);
+    // The preview re-renders on change, so nudge it once both are set.
+    dispatchOn('preview-label-size', 'change');
 }
 
 /**
