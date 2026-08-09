@@ -810,6 +810,45 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 
+  /jobs/{job_id}/release:
+    post:
+      summary: Print a job that was held for review
+      description: >-
+        The counterpart to submitting with `hold`. Enqueues the held job for
+        printing, keeping its id -- a held job has never printed, so releasing
+        it is that job finally happening rather than a new one.
+
+        The media guard runs HERE rather than at hold time, because a label
+        under review is exactly when the roll is most likely to be changed. A
+        job held against 50mm tape and released after a swap to 62mm is
+        rejected with 400 instead of being silently discarded by the printer.
+
+        400 when the job is not held, or was held as a file with no executor
+        (an `/image/compose` upload) -- those are re-composed in the UI.
+      operationId: api.jobs_controller.release_job
+      tags:
+        - jobs
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          description: Identifier of the held print job to release
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Held job queued for printing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PrintResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /jobs/{job_id}/file:
     get:
       summary: Download a print job's file
@@ -1422,6 +1461,16 @@ components:
             Validate only: render the label and check printer reachability, but
             do not print or enqueue. Returns { ok, dry_run, printer_reachable,
             would_print: { label_size, copies, width_px, height_px } }.
+          default: false
+        hold:
+          type: boolean
+          description: >-
+            Record the job as HELD instead of printing it. Nothing reaches the
+            printer until POST /jobs/{job_id}/release. For callers with no UI
+            of their own that still want a human to see the label first.
+
+            The media guard is skipped here and enforced at release, against
+            whatever roll is loaded then.
           default: false
       required:
         - text

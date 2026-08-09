@@ -17,7 +17,8 @@ from flask import send_file
 
 from src.services.printer_service import printer_service
 from src.services.queue_service import print_queue
-from src.utils.exceptions import ResourceNotFoundError
+from src.utils.exceptions import ResourceNotFoundError, ValidationError
+from src.utils.print_guard import enforce_media_match
 
 logger = structlog.get_logger()
 
@@ -78,6 +79,48 @@ def reprint_job(job_id: str) -> Dict[str, Any]:
         )
     logger.info("Reprint requested", job_id=job_id, new_job_id=new_id)
     return {"job_id": new_id}
+
+
+def release_job(job_id: str) -> Dict[str, Any]:
+    """Print a job that was held for review.
+
+    The counterpart to submitting with ``hold``: the label has been looked at,
+    and this is the click that makes paper move.
+
+    THE MEDIA GUARD RUNS HERE, and this is the whole reason release is a
+    separate call rather than something ``hold`` could have done itself. A held
+    job is not checked against the loaded roll when it is created -- holding a
+    label is exactly when the roll is most likely still to be changed. So the
+    check belongs at the only moment it means anything, which is now. Several
+    labels held against 50mm tape and released after swapping to 62mm would
+    otherwise be silently discarded by the printer, which is the failure this
+    guard exists to prevent.
+
+    Returns the same job id: a held job has never printed, so releasing it is
+    that job finally happening rather than a new one.
+    """
+    job = print_queue.get(job_id)
+    if job is None:
+        logger.warning("Cannot release: print job not found", job_id=job_id)
+        raise ResourceNotFoundError(
+            "Print job not found", resource_type="job", resource_id=job_id,
+        )
+
+    # Re-check against the roll loaded RIGHT NOW, not the one at hold time.
+    enforce_media_match((job.get("params") or {}).get("settings"))
+
+    try:
+        print_queue.release(job_id)
+    except KeyError:
+        raise ResourceNotFoundError(
+            "Print job not found", resource_type="job", resource_id=job_id,
+        )
+    except ValueError as e:
+        # Not held, or held as a file with no executor to run.
+        raise ValidationError(str(e), "job_id")
+
+    logger.info("Held job released for printing", job_id=job_id)
+    return {"success": True, "job_id": job_id, "message": "Print job queued"}
 
 
 def get_job_file(job_id: str):

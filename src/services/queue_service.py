@@ -188,13 +188,16 @@ class PrintQueueService:
         label: str,
         params: Optional[Dict[str, Any]] = None,
         file_path: Optional[str] = None,
+        fn: Optional[Callable[[], Any]] = None,
     ) -> str:
         """Record a job WITHOUT queueing it for execution.
 
         For labels that should be reviewed before anything is printed --
-        currently Homebox, which renders a label and fires a fire-and-forget
+        originally Homebox, which renders a label and fires a fire-and-forget
         print command with no way to open a browser and no idea whether the
-        rotation is what the user wanted.
+        rotation is what the user wanted. Any submission endpoint can now ask
+        for this with `hold`, so a caller with no UI can still get a label in
+        front of a human before paper moves.
 
         Deliberately not `submit()` plus a paused queue: pause is GLOBAL, so it
         would also hold back voice labels and every other caller, and resuming
@@ -204,6 +207,12 @@ class PrintQueueService:
 
         The file is stored the same way as any other job's, so /jobs/{id}/file
         serves it and the composer can open it exactly like a Canva export.
+
+        `fn` is optional. When given, the job carries its own executor and
+        `release()` can print it directly -- that is what lets a text or QR
+        label be held, since those have nothing on disk for the composer to
+        reopen. Without it the job is a file to be re-composed by hand, which
+        is the original Homebox behaviour.
         """
         self._sweep_job_files()
 
@@ -218,17 +227,51 @@ class PrintQueueService:
             "finished_at": None,
             "error": None,
             "params": copy.deepcopy(params) if params else {},
-            # Nothing to re-run: a held job has no executor until it is opened
-            # and printed like any other composition.
+            # A held job is not a finished one, so there is nothing to repeat.
+            # Releasing it is `release()`, not `reprint()`.
             "can_reprint": False,
+            # Lets a UI show a Print button only where it would work.
+            "can_release": fn is not None,
         }
         with self._lock:
             self._jobs[job_id] = job
             self._files[job_id] = file_path
+            if fn is not None:
+                self._executors[job_id] = fn
             self._order.append(job_id)
             self._prune_locked()
         logger.info("Print job held for review", job_id=job_id,
-                    type=job_type, label=label)
+                    type=job_type, label=label, releasable=fn is not None)
+        return job_id
+
+    def release(self, job_id: str) -> str:
+        """Enqueue a held job for printing, in place.
+
+        The job keeps its id rather than spawning a new one the way `reprint()`
+        does: a held job has never printed, so releasing it is the *same* job
+        finally happening, and a caller holding the id from `hold()` can still
+        poll it afterwards.
+
+        Returns the job id on success.
+
+        Raises:
+            KeyError: No such job.
+            ValueError: The job is not held, or was held without an executor
+                (a file-only hold, which is re-composed in the UI instead).
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                raise KeyError(job_id)
+            if job["status"] != "held":
+                raise ValueError(f"job is {job['status']}, not held")
+            fn = self._executors.get(job_id)
+            if fn is None:
+                raise ValueError("held job has no executor; open it in the composer")
+            job["status"] = "queued"
+            job["can_reprint"] = True
+        self._queue.put((job_id, fn))
+        logger.info("Held print job released", job_id=job_id, type=job["type"])
         return job_id
 
     def reprint(self, job_id: str) -> Optional[str]:

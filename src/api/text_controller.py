@@ -54,10 +54,17 @@ def print_text(body: Dict[str, Any]) -> Dict[str, Any]:
             if setting not in settings:
                 raise ValidationError(f"{setting} is required", f"settings.{setting}")
 
+        hold = is_confirmed(body.get("hold"))
+
         # Reject a label size the loaded media cannot print, before the job
         # is queued -- printing is asynchronous, so an error raised during
         # the print never reaches the caller.
-        enforce_media_match(settings)
+        #
+        # Skipped when holding: nothing is about to print, and the roll is most
+        # likely to be changed while a label sits under review. The guard runs
+        # at release instead, against whatever is loaded then.
+        if not hold:
+            enforce_media_match(settings)
 
         # Large batches require explicit confirmation before enqueuing.
         enforce_large_batch_confirmation(
@@ -75,6 +82,20 @@ def print_text(body: Dict[str, Any]) -> Dict[str, Any]:
 
         # Parameters that allow the UI to restore the form for a reprint.
         params = {"type": "text", "text": text, "settings": settings}
+
+        if hold:
+            # Carries its own executor: text has no file for the composer to
+            # reopen, so release() prints it directly.
+            job_id = print_queue.hold(
+                "text", _short_label(text), params=params, fn=job)
+            logger.info("Text print job held for review", job_id=job_id)
+            return {
+                "success": True,
+                "job_id": job_id,
+                "held": True,
+                "message": "Label held for review -- release it to print",
+            }
+
         job_id = print_queue.submit("text", _short_label(text), job, params=params)
         logger.info("Text print job queued", job_id=job_id)
 
