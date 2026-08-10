@@ -10,7 +10,7 @@ from typing import Dict, Any
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
-from flask import request, current_app
+from flask import g, request, current_app
 from PIL import Image, UnidentifiedImageError
 
 from src.services.printer_service import printer_service
@@ -26,8 +26,41 @@ logger = structlog.get_logger()
 # decode from an uploaded image.
 Image.MAX_IMAGE_PIXELS = 50_000_000
 
+def stash_raw_body():
+    """Read a raw image body BEFORE anything can consume the stream.
+
+    Wired as a before_request hook (see src/app.py), because by the time the
+    handler runs connexion has already destroyed the body. Its ConnexionRequest
+    is built as
+
+        form=flask_request.form,        # <- parses the form, CONSUMES the stream
+        ...
+        body=flask_request.get_data(),  # <- now returns b""
+
+    with `form` evaluated before `body`, so any request whose content type
+    Werkzeug treats as a form arrives at the handler empty. BusyBox wget sends
+    application/x-www-form-urlencoded by default, which is exactly that case.
+
+    Reading here caches the body on the request, so the later reads see it.
+    """
+    if request.method != "POST" or not request.path.endswith("/image/print"):
+        return None
+    if request.mimetype == "multipart/form-data":
+        return None
+    # cache=True: the point is to populate Werkzeug's cache so that connexion's
+    # own get_data() -- and ours -- return the bytes rather than nothing.
+    data = request.get_data(cache=True)
+    if data and _looks_like_image(data):
+        g.raw_image_body = data
+    return None
+
+
 def _read_raw_image_body():
     """Return the request body when the image arrived as raw bytes, else None.
+
+    Prefers what stash_raw_body cached: by the time this runs connexion has
+    already parsed the form, and on a form-typed content type that leaves the
+    stream empty.
 
     Lets callers that cannot build a multipart upload print an image. That is
     not a hypothetical: Homebox's HBOX_LABEL_MAKER_PRINT_COMMAND is a single
@@ -49,7 +82,13 @@ def _read_raw_image_body():
     if request.mimetype == "multipart/form-data":
         return None
 
-    data = request.get_data(cache=False)
+    stashed = getattr(g, "raw_image_body", None)
+    if stashed:
+        return stashed
+
+    # Fallback for callers that reach this without the hook (tests build a bare
+    # request context). Works whenever the stream is still intact.
+    data = request.get_data(cache=True)
     if not data:
         return None
 

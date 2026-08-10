@@ -320,3 +320,43 @@ def test_jpeg_is_recognised_too():
     from src.api.image_controller import _looks_like_image
     assert _looks_like_image(b"\xff\xd8\xff" + b"x")
     assert not _looks_like_image(b"not an image")
+
+
+def test_raw_body_is_stashed_before_connexion_can_consume_it():
+    """The hook must run before anything touches .form.
+
+    connexion builds its request with `form=` evaluated before `body=`, and
+    touching .form makes Werkzeug parse and consume the stream. Without the
+    before_request hook a raw POST arrives at the handler empty, which is how
+    this failed the first time: HTTP 400 "No image file provided" for a body
+    that was definitely sent.
+    """
+    import pathlib
+    src = pathlib.Path("src/app.py").read_text()
+    assert "app.before_request(stash_raw_body)" in src
+    # ...and before register_auth, so the body is captured no matter which
+    # hook ends up rejecting the request.
+    assert src.index("stash_raw_body)") < src.index("register_auth(app)")
+
+
+def test_stash_ignores_multipart_and_other_paths():
+    from flask import Flask, g
+    from src.api.image_controller import stash_raw_body
+    app = Flask(__name__)
+
+    png = b"\x89PNG\r\n\x1a\n" + b"x"
+    # wrong path
+    with app.test_request_context("/api/v1/text/print", method="POST", data=png,
+                                  content_type="image/png"):
+        stash_raw_body()
+        assert getattr(g, "raw_image_body", None) is None
+    # multipart is the normal path
+    with app.test_request_context("/api/v1/image/print", method="POST", data=png,
+                                  content_type="multipart/form-data; boundary=x"):
+        stash_raw_body()
+        assert getattr(g, "raw_image_body", None) is None
+    # the case it exists for
+    with app.test_request_context("/api/v1/image/print", method="POST", data=png,
+                                  content_type="application/x-www-form-urlencoded"):
+        stash_raw_body()
+        assert getattr(g, "raw_image_body", None) == png

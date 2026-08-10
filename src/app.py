@@ -108,6 +108,16 @@ def create_app():
         CORS(app, origins=[])
         logger.info("CORS_ORIGINS not set – allowing same-origin requests only")
 
+    # Capture a raw image body before anything can consume the stream.
+    #
+    # Must be registered as a before_request hook rather than read in the
+    # handler: connexion builds its own request object with `form=` evaluated
+    # before `body=`, and touching .form makes Werkzeug parse and CONSUME the
+    # stream. A raw POST whose content type looks form-ish -- which is what
+    # BusyBox wget sends by default -- therefore reaches the handler empty.
+    from src.api.image_controller import stash_raw_body
+    app.before_request(stash_raw_body)
+
     # Configure opt-in API-key authentication via a before_request hook.
     register_auth(app)
 
