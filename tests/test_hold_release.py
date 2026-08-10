@@ -360,3 +360,32 @@ def test_stash_ignores_multipart_and_other_paths():
                                   content_type="application/x-www-form-urlencoded"):
         stash_raw_body()
         assert getattr(g, "raw_image_body", None) == png
+
+
+# --------------------------------------------------------------------------
+# Saving a transformed image must not depend on the filename
+# --------------------------------------------------------------------------
+
+def test_rotation_and_resize_save_with_an_explicit_format():
+    """Pillow infers the format from the extension, and there may not be one.
+
+    A raw-body upload is stored as a bare uuid, and the browser re-uploads a
+    job's stored file under whatever name it had. Saving without format= then
+    fails with "unknown file extension: ''" -- which surfaced as a 500 on
+    /image/preview and left the panel stuck on "Draft — approximate".
+
+    The format must also be read BEFORE the transform: rotate() and a new
+    canvas both produce an image whose .format is None.
+    """
+    import pathlib
+    src = pathlib.Path("src/services/printer_service.py").read_text()
+
+    rot = src[src.index("def _apply_rotation"):]
+    rot = rot[:rot.index("\n    def ")]
+    assert "format=fmt" in rot
+    assert rot.index("fmt = img.format") < rot.index("img.rotate(")
+
+    rez = src[src.index("def _resize_image"):]
+    rez = rez[:rez.index("\n    def ")]
+    assert "format=resize_fmt" in rez
+    assert rez.index("resize_fmt = img.format") < rez.index("img.save(")

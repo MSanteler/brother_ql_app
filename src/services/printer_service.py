@@ -1563,6 +1563,9 @@ class PrinterService:
             max_width = get_label_width(label_size)
 
             with Image.open(image_path) as img:
+                # Captured at open time: img is rebound to a new canvas below,
+                # and a transformed image has .format = None.
+                resize_fmt = img.format or "PNG"
                 # Scaling is OPT-IN, the same as it is for text.
                 #
                 # This used to stretch every image to the tape width
@@ -1609,10 +1612,12 @@ class PrinterService:
                                      ((max_width - img.width) // 2, 0))
                         img = canvas
                 
-                # Save resized image
+                # Save resized image. Explicit format for the same reason as
+                # _apply_rotation: the name may carry no usable extension, and
+                # `img` has been rebound to a new canvas whose .format is None.
                 filename = os.path.basename(image_path)
                 resized_path = os.path.join(self.upload_folder, f"resized_{filename}")
-                img.save(resized_path)
+                img.save(resized_path, format=resize_fmt)
                 
                 return resized_path
         except Exception as e:
@@ -1635,14 +1640,26 @@ class PrinterService:
         """
         try:
             with Image.open(image_path) as img:
+                # Read the format BEFORE transforming: rotate() returns a new
+                # image whose .format is None.
+                fmt = img.format or "PNG"
                 # Apply rotation
                 rotated_img = img.rotate(-angle, resample=Image.Resampling.LANCZOS, expand=True)
                 
-                # Save rotated image
+                # Save rotated image.
+                #
+                # Pillow infers the format from the extension, so an uploaded
+                # file with no extension -- or an unfamiliar one -- fails with
+                # "unknown file extension: ''". That is not hypothetical: the
+                # browser re-uploads a job's stored file under whatever name it
+                # was given, and a raw-body upload is stored as a bare uuid.
+                #
+                # Keep the source format when Pillow knows it, and fall back to
+                # PNG, which is lossless and always available.
                 filename = os.path.basename(image_path)
                 rotated_path = os.path.join(self.upload_folder, f"rotated_{filename}")
-                rotated_img.save(rotated_path)
-                
+                rotated_img.save(rotated_path, format=fmt)
+
                 return rotated_path
         except Exception as e:
             logger.error("Error rotating image", error=str(e), exc_info=True)
