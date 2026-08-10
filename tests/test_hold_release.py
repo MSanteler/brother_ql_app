@@ -389,3 +389,28 @@ def test_rotation_and_resize_save_with_an_explicit_format():
     rez = rez[:rez.index("\n    def ")]
     assert "format=resize_fmt" in rez
     assert rez.index("resize_fmt = img.format") < rez.index("img.save(")
+
+
+def test_printer_status_has_exactly_one_poller():
+    """Two pollers race for a device that answers one query at a time.
+
+    The QL serves a single USB status request at a time. When the navbar pill
+    and the loaded-media bar each ran their own 30s timer they eventually
+    overlapped, and the loser reported the printer as unreadable -- producing
+    "Online" in the navbar and "Printer not reporting media" directly below it,
+    for the same printer, seconds apart.
+
+    checkPrinterStatus is the only poller now, and it feeds both readouts from
+    the one response.
+    """
+    import pathlib
+    core = pathlib.Path("src/static/js/core.js").read_text()
+    assert core.count("setInterval(checkPrinterStatus") == 1
+    assert "setInterval(refreshLoadedMedia" not in core
+
+    api = pathlib.Path("src/static/js/api.js").read_text()
+    # ...and the navbar hands its response to the media bar rather than
+    # letting it fetch again.
+    assert "applyLoadedMedia(data)" in api
+    # Only the shared reader may POST to the status endpoint.
+    assert api.count("'/api/v1/printers/status'") == 1

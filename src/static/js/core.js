@@ -543,11 +543,15 @@ function setupOutputBar() {
         outRotate.addEventListener('change', () => { outRotate.dataset.touched = '1'; });
     }
 
-    // Ask the printer what it holds, then keep it roughly fresh. checkPrinterStatus
-    // already polls every 30s for the navbar pill; this is the media equivalent.
+    // Ask the printer what it holds, once, at startup.
+    //
+    // NO second interval. checkPrinterStatus already polls every 30s and now
+    // feeds the media bar from the same response, so a timer here would be a
+    // second poller racing the first for a device that answers one USB status
+    // query at a time. That race is what made the navbar say "Online" while
+    // the bar below said "Printer not reporting media".
     if (typeof refreshLoadedMedia === 'function') {
         refreshLoadedMedia();
-        setInterval(refreshLoadedMedia, 30000);
     }
 }
 

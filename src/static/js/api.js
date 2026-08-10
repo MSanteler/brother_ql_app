@@ -361,23 +361,20 @@ async function checkPrinterStatus() {
             throw new Error('Printer URI and model are required');
         }
         
-        const response = await fetch('/api/v1/printers/status', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                printer_uri: printerUri,
-                printer_model: printerModel
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || `Error: ${response.status}`);
+        // One call, shared. The QL answers a single USB status query at a
+        // time, so two independent pollers hitting it on their own 30s timers
+        // eventually overlap -- and the loser reports the printer as not
+        // responding while the winner shows it online. That is exactly the
+        // contradiction this used to produce: "Online" in the navbar and
+        // "Printer not reporting media" under the preview, from the same
+        // printer, seconds apart.
+        const data = await fetchPrinterStatus({ force: true });
+        if (!data) {
+            throw new Error('Could not reach the printer');
         }
-        
-        const data = await response.json();
+        // Same response feeds the loaded-media bar, so the two readouts can no
+        // longer disagree about the printer they both just asked about.
+        if (typeof applyLoadedMedia === 'function') applyLoadedMedia(data);
         
         if (data.available) {
             // Update status result in modal
@@ -1731,36 +1728,105 @@ let savedRotate = '0';
  * Failure is not an error state here -- an unreadable printer just means the
  * UI cannot say, and must not block printing on a guess.
  */
-async function refreshLoadedMedia() {
-    const printerUri = document.getElementById('printer-uri');
-    const printerModel = document.getElementById('printer-model');
-    if (!printerUri || !printerUri.value) return;
+/**
+ * The one place the printer's status is fetched.
+ *
+ * The QL answers a single USB status query at a time. Two callers polling it
+ * independently -- the navbar pill and the loaded-media bar, each on its own
+ * 30s timer -- drift into each other, and when they collide one of them gets
+ * "[Errno 16] Resource busy" or simply waits. The visible result was the two
+ * readouts disagreeing about the same printer: "Online" above, "Printer not
+ * reporting media" below.
+ *
+ * So: a single in-flight request is shared by every caller, and its result is
+ * briefly cached. Nothing here polls harder than before; it just stops asking
+ * twice for the same answer.
+ *
+ * @param {{force?: boolean}} [opts] force: ignore the cache (an explicit
+ *   "check now" from the user should actually check).
+ * @returns {Promise<object|null>} the status body, or null if it could not be
+ *   read.
+ */
+let printerStatusCache = null;      // { at: epochMs, data: object|null }
+let printerStatusInFlight = null;   // Promise, deduping concurrent callers
+const PRINTER_STATUS_TTL_MS = 5000;
 
-    try {
-        const response = await fetch('/api/v1/printers/status', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                printer_uri: printerUri.value,
-                printer_model: printerModel ? printerModel.value : 'QL-800'
-            })
-        });
-        const data = response.ok ? await response.json() : null;
-        const d = data && data.details;
-        // media_width_mm is only present for USB printers that answered.
-        if (d && d.media_width_mm) {
-            loadedMedia = {
-                width: d.media_width_mm,
-                length: d.media_length_mm || 0,
-                sizes: d.loadable_label_sizes || [],
-                errors: d.errors || []
-            };
-        } else {
-            loadedMedia = null;
+async function fetchPrinterStatus(opts = {}) {
+    const now = Date.now();
+    if (!opts.force && printerStatusCache &&
+        now - printerStatusCache.at < PRINTER_STATUS_TTL_MS) {
+        return printerStatusCache.data;
+    }
+    // Join the request already going out rather than starting a second one.
+    if (printerStatusInFlight) return printerStatusInFlight;
+
+    const uriEl = document.getElementById('printer-uri');
+    const modelEl = document.getElementById('printer-model');
+    if (!uriEl || !uriEl.value) return null;
+
+    printerStatusInFlight = (async () => {
+        try {
+            const response = await fetch('/api/v1/printers/status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    printer_uri: uriEl.value,
+                    printer_model: modelEl ? modelEl.value : 'QL-800'
+                })
+            });
+            const data = response.ok ? await response.json() : null;
+            printerStatusCache = { at: Date.now(), data };
+            return data;
+        } catch (e) {
+            printerStatusCache = { at: Date.now(), data: null };
+            return null;
+        } finally {
+            printerStatusInFlight = null;
         }
-    } catch (error) {
+    })();
+    return printerStatusInFlight;
+}
+
+
+/**
+ * Update the loaded-media state from a status response, and redraw.
+ *
+ * Split out so the navbar check can feed the media bar from the SAME response
+ * it just received, instead of leaving it to a separate poll that would ask
+ * the printer again -- and possibly collide with something else.
+ *
+ * @param {object|null} data - a /printers/status body, or null if unreadable.
+ */
+function applyLoadedMedia(data) {
+    const d = data && data.details;
+    // media_width_mm is only present for USB printers that answered.
+    if (d && d.media_width_mm) {
+        loadedMedia = {
+            width: d.media_width_mm,
+            length: d.media_length_mm || 0,
+            sizes: d.loadable_label_sizes || [],
+            errors: d.errors || []
+        };
+    } else {
         loadedMedia = null;
     }
+    seedLabelSizeFromLoaded();
+    updateOutputBar();
+}
+
+
+async function refreshLoadedMedia() {
+    let data = null;
+    try {
+        data = await fetchPrinterStatus();
+    } catch (error) {
+        data = null;
+    }
+    applyLoadedMedia(data);
+}
+
+
+function seedLabelSizeFromLoaded() {
     // Seed the label selector from the roll actually loaded, ONCE, on the first
     // successful read -- the printer knowing what is in it is better than a
     // markup default, and it saves reaching for "Match loaded" every time.
@@ -1783,8 +1849,6 @@ async function refreshLoadedMedia() {
             sel.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }
-
-    updateOutputBar();
 }
 
 /**
