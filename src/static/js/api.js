@@ -68,8 +68,26 @@ function refreshComposerMode() {
         let saveBtn = form.querySelector('[data-save-held]');
         let banner = form.querySelector('[data-editing-banner]');
 
+        // The hold button is ALWAYS offered, not only while editing. Parking a
+        // label to print later is a normal thing to want from a fresh compose
+        // -- the roll may be wrong, or a batch is being prepared -- and having
+        // it appear only after opening a held job made holding look like a
+        // property of editing rather than a choice about this label.
+        if (!saveBtn) {
+            saveBtn = document.createElement('button');
+            saveBtn.type = 'button';
+            saveBtn.setAttribute('data-save-held', '');
+            saveBtn.className = 'btn-print btn-secondary';
+            submitBtn.parentNode.insertBefore(saveBtn, submitBtn);
+        }
+
+        // Only the wording depends on whether this label already exists in the
+        // queue: editing updates that job, composing adds a new held one.
+        saveBtn.innerHTML = editing
+            ? '<i class="bi bi-check2"></i> Save changes'
+            : '<i class="bi bi-clock-history"></i> Hold for later';
+
         if (!editing) {
-            if (saveBtn) saveBtn.remove();
             if (banner) banner.remove();
             if (submitBtn.dataset.printLabel) {
                 submitBtn.innerHTML = submitBtn.dataset.printLabel;
@@ -89,18 +107,11 @@ function refreshComposerMode() {
             submitBtn.parentNode.insertBefore(banner, submitBtn);
         }
 
-        if (!saveBtn) {
-            // Remember the print button's own wording so it can be restored.
+        // "Print now" rather than "Print Text" while editing: it says that this
+        // print ends the edit, where Save keeps it queued.
+        if (!submitBtn.dataset.printLabel) {
             submitBtn.dataset.printLabel = submitBtn.innerHTML;
-            submitBtn.innerHTML =
-                '<i class="bi bi-printer-fill"></i> Print now';
-
-            saveBtn = document.createElement('button');
-            saveBtn.type = 'button';
-            saveBtn.setAttribute('data-save-held', '');
-            saveBtn.className = 'btn-print btn-secondary';
-            saveBtn.innerHTML = '<i class="bi bi-check2"></i> Save changes';
-            submitBtn.parentNode.insertBefore(saveBtn, submitBtn);
+            submitBtn.innerHTML = '<i class="bi bi-printer-fill"></i> Print now';
         }
     });
 }

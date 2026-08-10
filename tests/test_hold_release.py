@@ -414,3 +414,29 @@ def test_printer_status_has_exactly_one_poller():
     assert "applyLoadedMedia(data)" in api
     # Only the shared reader may POST to the status endpoint.
     assert api.count("'/api/v1/printers/status'") == 1
+
+
+def test_hold_button_is_offered_on_every_compose_form():
+    """Holding is a choice about the label, not a property of editing.
+
+    It first appeared only after opening a held job, which made "park this for
+    later" unreachable from a fresh compose -- the roll may be wrong, or a
+    batch is being prepared, and neither involves an existing job.
+    """
+    import pathlib
+    api = pathlib.Path("src/static/js/api.js").read_text()
+
+    fn = api[api.index("function refreshComposerMode"):]
+    fn = fn[:fn.index("\n}\n") + 3]
+
+    # The button is created unconditionally...
+    create = fn.index("saveBtn = document.createElement")
+    early_return = fn.index("if (!editing)")
+    assert create < early_return, "the hold button must exist before the non-editing return"
+
+    # ...and only its wording depends on editing.
+    assert "Save changes" in fn and "Hold for later" in fn
+
+    # It must also be rendered at startup, not just when a job is opened.
+    core = pathlib.Path("src/static/js/core.js").read_text()
+    assert "refreshComposerMode()" in core

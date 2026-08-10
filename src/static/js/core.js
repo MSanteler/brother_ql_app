@@ -33,6 +33,11 @@ function initApp() {
     // Check for a shared file hand-off (?share=token&type=pdf|image)
     handleSharedFile();
 
+    // Render the compose buttons once at startup. "Hold for later" is offered
+    // on every form, not only after a held job has been opened, so it has to
+    // exist before anything is opened.
+    if (typeof refreshComposerMode === 'function') refreshComposerMode();
+
     console.log('Brother QL Printer App initialized');
 }
 
