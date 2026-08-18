@@ -1450,8 +1450,6 @@ class PrinterService:
                         font = ImageFont.truetype(self.font_path, font_size)
                     wrapped = wrap_all(font)
 
-                    wrapped = candidate_lines
-
             lines = wrapped
 
             # Create a dummy image to calculate text dimensions
