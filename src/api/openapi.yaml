@@ -654,8 +654,8 @@ paths:
                   example: "Liberation Sans"
                 font_style:
                   type: string
-                  description: Style within the family
-                  enum: [regular, bold, italic, bold_italic]
+                  description: Style within the family. Empty inherits the default.
+                  enum: ["", regular, bold, italic, bold_italic]
                   example: "bold"
                 alignment:
                   type: string
@@ -1755,8 +1755,8 @@ components:
               example: "Liberation Sans"
             font_style:
               type: string
-              description: Style within the family
-              enum: [regular, bold, italic, bold_italic]
+              description: Style within the family. Empty inherits the default.
+              enum: ["", regular, bold, italic, bold_italic]
               example: "bold"
         settings:
           $ref: '#/components/schemas/PrintSettings'
@@ -1867,8 +1867,8 @@ components:
               example: "Liberation Sans"
             font_style:
               type: string
-              description: Style within the family
-              enum: [regular, bold, italic, bold_italic]
+              description: Style within the family. Empty inherits the default.
+              enum: ["", regular, bold, italic, bold_italic]
               example: "bold"
             alignment:
               type: string
@@ -1946,9 +1946,10 @@ components:
         font_style:
           type: string
           description: >-
-            Style within the family. A style the family does not provide
-            degrades to the closest one it has.
-          enum: [regular, bold, italic, bold_italic]
+            Style within the family. Empty (or omitted) inherits the saved
+            default. A style the family does not provide degrades to the
+            closest one it has.
+          enum: ["", regular, bold, italic, bold_italic]
           example: "bold"
         text_wrap:
           type: boolean
