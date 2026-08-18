@@ -35,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dynamic keep-alive**: keep-alive can run `forever` or in a `timed` mode that keeps the printer awake only for a configurable window after each print (`keep_alive_mode`, `keep_alive_duration_seconds`), plus an always-visible keep-alive toggle in the top bar.
 - **Configurable uploads**: ephemeral, configurable upload folder (`UPLOAD_FOLDER`) with TTL cleanup of staged job/share files (`JOB_FILE_TTL_SECONDS`, `SHARE_TTL_SECONDS`).
 - **Demo mode**: a bundled demo layer (`src/static/js/demo.js`) lets the static UI run on GitHub Pages with mocked API data and no backend, plus a `pages.yml` deploy workflow.
-- **Testing & tooling**: unit tests (URI validation, IPP client, settings, printer status) and project tooling (Dependabot, dependency audit, lint/test configuration).
+- **Font selection**: text is no longer locked to DejaVu Sans Bold. `font_family` and `font_style` (`regular`/`bold`/`italic`/`bold_italic`) can be set per request or saved as the default, on plain text labels and on the text block of the QR and image composites (`text.font_family` / `text.font_style`). `GET /api/v1/fonts` lists the installed families with the styles each one has, and `GET /api/v1/fonts/{family}:{style}/file` serves a face so the live preview renders in the typeface the printer will use. The image now bundles Liberation (metric-compatible with Arial/Times New Roman/Courier New) alongside DejaVu, and any `.ttf`/`.otf` copied into `/app/data/fonts` (`FONTS_DIR`) is picked up within seconds without a restart or a rebuild. Unchanged for existing installs: no family named still renders as DejaVu Sans Bold.
+- **Testing & tooling**: unit tests (URI validation, IPP client, settings, printer status, font selection) and project tooling (Dependabot, dependency audit, lint/test configuration).
 
 ### Changed
 - Reworked the web UI into a "Console" layout: sidebar navigation, light/dark themes that follow the system preference, a fully responsive and iOS-friendly experience, and Settings as its own dedicated view.
@@ -54,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Descenders on the last line are no longer clipped: line height is measured from the font's ascent+descent rather than the ink bounding box, which only covers the glyphs actually present.
 - Text on narrow continuous rolls no longer degrades into a column of single letters. With the true width in play, a word can be wider than a 12 mm or P-touch label; the new `auto_fit` setting (on by default) shrinks the font until every word fits a line instead of hard-breaking it. On die-cut labels it shrinks to the fixed height instead. Disable per request with `settings.auto_fit: false`.
 - Keep-alive now writes to the printer's raw port (`9100`) instead of only reading status, so it can actually prevent the auto power-off on network printers.
+- **Auto-fitting text on continuous tape no longer fails outright.** `scale_mode: "fit"` (and the older `auto_fit: true`) raised `NameError: candidate_lines` on any non-die-cut label, surfacing as a 500 and `Error creating text label` — the shrink-to-fit branch referenced a variable left behind when grow-to-fill was removed. Die-cut labels were unaffected, which is why it went unnoticed.
 - Corrected the port example in `docker-compose.yml` (5000).
 
 ## [3.1.0] - 2025-08-18

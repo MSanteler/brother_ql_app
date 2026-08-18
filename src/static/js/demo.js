@@ -30,6 +30,8 @@
             printer_model: 'QL-820NWB',
             label_size: '62',
             font_size: 50,
+            font_family: '',
+            font_style: 'bold',
             alignment: 'left',
             rotate: 0,
             threshold: 70.0,
@@ -346,6 +348,25 @@
         if (p === '/settings' && method === 'PUT') {
             Object.assign(state.settings, body || {});
             return jsonResponse(state.settings);
+        }
+
+        // ----- Fonts -----
+        // The demo serves no font *files*, so the picker works but the draft
+        // preview keeps its fallback face (ensureFontFace tolerates the miss).
+        if (p === '/fonts' && method === 'GET') {
+            return jsonResponse({
+                fonts: [
+                    { family: 'DejaVu Sans', styles: ['regular', 'bold', 'italic', 'bold_italic'], user_supplied: false },
+                    { family: 'DejaVu Sans Mono', styles: ['regular', 'bold', 'italic', 'bold_italic'], user_supplied: false },
+                    { family: 'DejaVu Serif', styles: ['regular', 'bold', 'italic', 'bold_italic'], user_supplied: false },
+                    { family: 'Liberation Sans', styles: ['regular', 'bold', 'italic', 'bold_italic'], user_supplied: false },
+                    { family: 'Liberation Mono', styles: ['regular', 'bold', 'italic', 'bold_italic'], user_supplied: false },
+                    { family: 'Liberation Serif', styles: ['regular', 'bold', 'italic', 'bold_italic'], user_supplied: false }
+                ],
+                default_family: 'DejaVu Sans',
+                styles: ['regular', 'bold', 'italic', 'bold_italic'],
+                user_font_dir: '/app/data/fonts'
+            });
         }
 
         // ----- Printer status / keep-alive -----

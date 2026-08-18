@@ -13,6 +13,7 @@ from PIL import Image, UnidentifiedImageError
 from src.services.printer_service import printer_service
 from src.services.queue_service import print_queue
 from src.services.settings_service import settings_service
+from src.services.font_service import apply_text_font, STYLES as FONT_STYLES
 from src.utils.exceptions import (
     ValidationError,
     PrinterError,
@@ -84,6 +85,16 @@ def print_text_image() -> Dict[str, Any]:
         if position not in ('left', 'right'):
             raise ValidationError("position must be one of: left, right", "position")
 
+        # Typeface. Family is free text -- it is matched against the installed
+        # catalog at render time and falls back to the default if absent, so
+        # rejecting it here would only turn a cosmetic miss into a failed print.
+        # Style is a closed set, so a typo is worth catching.
+        font_family = request.form.get('font_family', '')
+        font_style = request.form.get('font_style', '')
+        if font_style and font_style not in FONT_STYLES:
+            raise ValidationError(
+                f"font_style must be one of: {', '.join(FONT_STYLES)}", "font_style")
+
         # Parse settings.
         settings_json = request.form.get('settings', '{}')
         try:
@@ -126,6 +137,8 @@ def print_text_image() -> Dict[str, Any]:
         combined_settings["image_position"] = position
         combined_settings["text_alignment"] = alignment
         combined_settings["text_font_size"] = font_size
+        apply_text_font(combined_settings,
+                        {"font_family": font_family, "font_style": font_style})
 
         # Enqueue the print job. The job prints from the persistent path and
         # does NOT delete it; TTL cleanup handles removal. Default args bind
@@ -141,6 +154,8 @@ def print_text_image() -> Dict[str, Any]:
             "filename": original_name,
             "settings": combined_settings,
             "font_size": font_size,
+            "font_family": font_family,
+            "font_style": font_style,
             "alignment": alignment,
             "position": position,
         }

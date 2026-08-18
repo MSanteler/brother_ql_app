@@ -22,7 +22,8 @@ except ImportError:
     # Define fallback defaults directly if import fails
     DEFAULT_SETTINGS = {
         "printer_uri": "tcp://192.168.1.100", "printer_model": "QL-800", "label_size": "62",
-        "font_size": 50, "alignment": "left", "vertical_alignment": "top",
+        "font_size": 50, "font_family": "", "font_style": "bold",
+        "alignment": "left", "vertical_alignment": "top",
         "rotate_mode": "image", "scale_mode": "actual", "scale_percent": 100,
         "canva_broker_url": "", "canva_broker_token": "",
         "rotate": 0, "threshold": 70.0,
@@ -102,7 +103,8 @@ class SettingsService:
 
         type_checks = {
             "printer_uri": str, "printer_model": str, "label_size": str,
-            "font_size": (int, float), "alignment": str, "vertical_alignment": str,
+            "font_size": (int, float), "font_family": str, "font_style": str,
+            "alignment": str, "vertical_alignment": str,
             "rotate_mode": str, "scale_mode": str, "scale_percent": (int, float),
             "canva_broker_url": str, "canva_broker_token": str,
             "rotate": (int, float),
@@ -137,6 +139,22 @@ class SettingsService:
         # --- Value Checks ---
         if "alignment" in settings_to_validate and settings_to_validate["alignment"] not in ["left", "center", "right"]:
             raise ValueError(f"Invalid alignment value: {settings_to_validate['alignment']}")
+
+        # font_style is a closed set, so a typo is worth rejecting outright.
+        #
+        # font_family deliberately is NOT validated against the installed font
+        # catalog. A settings file may legitimately name a face that is missing
+        # right now -- a drop-in font not yet copied onto the volume, or a
+        # config restored onto a fresh container -- and refusing the entire save
+        # for that would lock the user out of changing unrelated settings. The
+        # renderer falls back to the default face instead, which degrades one
+        # label rather than the whole config.
+        if ("font_style" in settings_to_validate
+                and settings_to_validate["font_style"] not in
+                ["regular", "bold", "italic", "bold_italic"]):
+            raise ValueError(
+                f"Invalid font_style value: {settings_to_validate['font_style']}. "
+                "Must be regular, bold, italic or bold_italic.")
 
         if ("rotate_mode" in settings_to_validate
                 and settings_to_validate["rotate_mode"] not in ["image", "layout"]):
@@ -329,7 +347,8 @@ class SettingsService:
     # Settings keys a print/preview request may inherit from the saved config
     # when omitted. keep_alive_*/ipp_port/printers are excluded (not per-print).
     _INHERITABLE_PRINT_KEYS = (
-        "printer_uri", "printer_model", "label_size", "font_size", "alignment",
+        "printer_uri", "printer_model", "label_size", "font_size",
+        "font_family", "font_style", "alignment",
         "vertical_alignment", "rotate", "rotate_mode", "scale_mode", "scale_percent", "threshold", "dither", "compress", "red", "copies",
         "cut_mode", "dpi_600", "hq",
     )

@@ -32,6 +32,8 @@ tags:
     description: Server-side render-only label previews (no printing)
   - name: settings
     description: Settings management
+  - name: fonts
+    description: Typefaces available for rendering text
   - name: jobs
     description: Print queue job status and management
 
@@ -644,6 +646,17 @@ paths:
                   description: Font size for the text
                   default: 30
                   example: 30
+                font_family:
+                  type: string
+                  description: >-
+                    Typeface for the text, as a family name from GET /fonts.
+                    Omitted or empty inherits the saved default.
+                  example: "Liberation Sans"
+                font_style:
+                  type: string
+                  description: Style within the family
+                  enum: [regular, bold, italic, bold_italic]
+                  example: "bold"
                 alignment:
                   type: string
                   description: Horizontal alignment of the text
@@ -771,6 +784,94 @@ paths:
                 $ref: '#/components/schemas/SuccessResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /fonts:
+    get:
+      summary: List available fonts
+      description: >-
+        Returns the typefaces available for rendering, grouped into families
+        with the styles each one actually has. Covers the faces bundled in the
+        image plus any dropped into the user font directory (FONTS_DIR,
+        default /app/data/fonts), which is rescanned automatically.
+      operationId: api.fonts_controller.list_fonts
+      tags:
+        - fonts
+      responses:
+        '200':
+          description: Available fonts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  fonts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        family:
+                          type: string
+                          example: "Liberation Sans"
+                        styles:
+                          type: array
+                          description: Styles this family actually provides
+                          items:
+                            type: string
+                            enum: [regular, bold, italic, bold_italic]
+                          example: ["regular", "bold", "italic", "bold_italic"]
+                        user_supplied:
+                          type: boolean
+                          description: True when the face came from the drop-in directory
+                          example: false
+                  default_family:
+                    type: string
+                    description: Family used when a request names none
+                    example: "DejaVu Sans"
+                  styles:
+                    type: array
+                    items:
+                      type: string
+                    example: ["regular", "bold", "italic", "bold_italic"]
+                  user_font_dir:
+                    type: string
+                    description: Where to drop additional font files
+                    example: "/app/data/fonts"
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /fonts/{font_id}/file:
+    get:
+      summary: Download a font file
+      description: >-
+        Serves one catalogued face so the browser-side live preview can render
+        in the same typeface the printer will use. The identifier is
+        "<family>:<style>", e.g. "Liberation Sans:bold". Only paths already in
+        the catalog are served.
+      operationId: api.fonts_controller.get_font_file
+      tags:
+        - fonts
+      parameters:
+        - name: font_id
+          in: path
+          required: true
+          description: Identifier of the form "<family>:<style>"
+          schema:
+            type: string
+          example: "Liberation Sans:bold"
+      responses:
+        '200':
+          description: >-
+            The font file. The actual Content-Type reflects the file served
+            (font/ttf, font/otf or font/collection).
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalServerError'
 
@@ -1646,6 +1747,17 @@ components:
               default: 30
               minimum: 10
               maximum: 100
+            font_family:
+              type: string
+              description: >-
+                Typeface for the text block, as a family name from GET /fonts.
+                Omitted or empty inherits the saved default.
+              example: "Liberation Sans"
+            font_style:
+              type: string
+              description: Style within the family
+              enum: [regular, bold, italic, bold_italic]
+              example: "bold"
         settings:
           $ref: '#/components/schemas/PrintSettings'
         confirm_large_batch:
@@ -1747,6 +1859,17 @@ components:
               default: 30
               minimum: 10
               maximum: 100
+            font_family:
+              type: string
+              description: >-
+                Typeface for the caption, as a family name from GET /fonts.
+                Omitted or empty inherits the saved default.
+              example: "Liberation Sans"
+            font_style:
+              type: string
+              description: Style within the family
+              enum: [regular, bold, italic, bold_italic]
+              example: "bold"
             alignment:
               type: string
               description: Text alignment
@@ -1812,6 +1935,21 @@ components:
           example: "62"
           default: "62"
           enum: ["12", "12+17", "18", "29", "38", "50", "54", "62", "62red", "102", "103", "104", "17x54", "17x87", "23x23", "29x42", "29x90", "39x90", "39x48", "52x29", "54x29", "60x86", "62x29", "62x100", "102x51", "102x152", "103x164", "d12", "d24", "d58", "pt12", "pt18", "pt24", "pt36"]
+        font_family:
+          type: string
+          description: >-
+            Typeface for this label, as a family name from GET /fonts (e.g.
+            "Liberation Mono"). Omitted or empty inherits the saved default.
+            A family that is not installed falls back to the default face
+            rather than failing the print.
+          example: "Liberation Sans"
+        font_style:
+          type: string
+          description: >-
+            Style within the family. A style the family does not provide
+            degrades to the closest one it has.
+          enum: [regular, bold, italic, bold_italic]
+          example: "bold"
         text_wrap:
           type: boolean
           description: >
@@ -1933,6 +2071,23 @@ components:
           default: 50
           minimum: 10
           maximum: 100
+        font_family:
+          type: string
+          description: >-
+            Default typeface, as a family name from GET /fonts (e.g.
+            "Liberation Sans"). Empty means the catalog default, which is
+            DejaVu Sans. A family that is not installed falls back to the
+            default at render time rather than failing the print.
+          example: "DejaVu Sans"
+          default: ""
+        font_style:
+          type: string
+          description: >-
+            Default style within the family. A style the family does not
+            provide degrades to the closest one it has.
+          enum: [regular, bold, italic, bold_italic]
+          example: "bold"
+          default: "bold"
         alignment:
           type: string
           description: Default text alignment

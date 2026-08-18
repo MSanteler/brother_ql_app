@@ -177,3 +177,53 @@ def test_missing_file_falls_back_to_defaults(tmp_path):
     settings = service.get_settings()
     assert settings["printer_model"] == "QL-800"
     assert "printers" in settings
+
+
+class TestFontSettings:
+    """font_style is a closed set; font_family deliberately is not validated.
+
+    A settings file may legitimately name a face that is not installed at this
+    moment -- a drop-in font not yet copied onto the volume, or a config
+    restored onto a fresh container. Rejecting the save would lock the user out
+    of changing every *other* setting because of a cosmetic mismatch, so the
+    miss is handled at render time by falling back to the default face.
+    """
+
+    @pytest.mark.parametrize("style", ["regular", "bold", "italic", "bold_italic"])
+    def test_accepts_every_style(self, tmp_path, style):
+        service = SettingsService(settings_file=str(tmp_path / "settings.json"))
+        assert service.save_settings(_valid_settings(font_style=style)) is True
+
+    @pytest.mark.parametrize("style", ["Bold", "oblique", "semibold", ""])
+    def test_rejects_an_unknown_style(self, tmp_path, style):
+        service = SettingsService(settings_file=str(tmp_path / "settings.json"))
+        with pytest.raises(ValueError, match="font_style"):
+            service._validate_settings(_valid_settings(font_style=style))
+
+    def test_accepts_a_family_that_is_not_installed(self, tmp_path):
+        service = SettingsService(settings_file=str(tmp_path / "settings.json"))
+        assert service.save_settings(
+            _valid_settings(font_family="Some Font Not Installed Here")) is True
+
+    def test_rejects_a_non_string_family(self, tmp_path):
+        service = SettingsService(settings_file=str(tmp_path / "settings.json"))
+        with pytest.raises(ValueError, match="font_family"):
+            service._validate_settings(_valid_settings(font_family=42))
+
+    def test_font_is_inherited_by_a_print_request(self, tmp_path):
+        """A caller that posts no settings (Homebox, the Canva poller) must
+        still get the configured typeface, not the built-in default."""
+        service = SettingsService(settings_file=str(tmp_path / "settings.json"))
+        service.save_settings(
+            _valid_settings(font_family="Liberation Mono", font_style="italic"))
+
+        resolved = service.resolve_print_settings(None)
+        assert resolved["font_family"] == "Liberation Mono"
+        assert resolved["font_style"] == "italic"
+
+    def test_request_overrides_the_saved_font(self, tmp_path):
+        service = SettingsService(settings_file=str(tmp_path / "settings.json"))
+        service.save_settings(_valid_settings(font_family="Liberation Mono"))
+
+        resolved = service.resolve_print_settings({"font_family": "DejaVu Serif"})
+        assert resolved["font_family"] == "DejaVu Serif"

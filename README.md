@@ -21,7 +21,9 @@ A modern web application to control Brother QL printers, enabling customizable t
 
 - **👁️ Live Preview**: See how your labels will look before printing for all label types, with an instant client-side preview backed by a true-to-print server render.
 
-- **⚙️ Custom Settings**: Fine-tune font size, label size, alignment, rotation, threshold, dithering and red printing. Copies (1–100) and cut mode are available directly in every compose section.
+- **🔤 Font Selection**: Choose a typeface and style (regular / bold / italic / bold italic) per label, or set a default for all of them. Ships with DejaVu and Liberation (metric-compatible with Arial, Times New Roman and Courier New); drop your own `.ttf` or `.otf` into the font directory and it appears in the picker within seconds — no restart, no rebuild.
+
+- **⚙️ Custom Settings**: Fine-tune typeface, font size, label size, alignment, rotation, threshold, dithering and red printing. Copies (1–100) and cut mode are available directly in every compose section.
 
 - **🗂 Print Queue**: Submit multiple jobs and have them printed sequentially. Pause/resume the queue, emergency-stop (cancel all waiting jobs), delete individual jobs, reprint with the same settings, or re-open a job's parameters — all from the Queue panel.
 
@@ -156,6 +158,8 @@ The application settings can be configured in the `data/settings.json` file. Thi
 - `printer_model`: The model of the printer (e.g., `QL-800`)
 - `label_size`: The size of the label to print (e.g., `62`)
 - `font_size`: The default font size used for text printing (e.g., `50`)
+- `font_family`: The default typeface, as a family name from `GET /api/v1/fonts` (e.g. `Liberation Sans`). Empty means the built-in default, `DejaVu Sans`. A family that is not installed falls back to the default at render time rather than failing the print, so a config naming a font you have not copied over yet still works.
+- `font_style`: The default style within that family — `regular`, `bold`, `italic` or `bold_italic`. Defaults to `bold`. A style the family does not provide degrades to the closest one it has.
 - `alignment`: The default text alignment (`left`, `center`, or `right`)
 - `rotate`: The rotation applied to the rendered label in degrees (`0`, `90`, `180`, or `270`)
 - `threshold`: The black/white threshold used when converting the image (e.g., `70.0`)
@@ -171,6 +175,66 @@ The application settings can be configured in the `data/settings.json` file. Thi
 - `keep_alive_mode`: `forever` to keep the printer awake continuously, or `timed` to keep it awake only for a window after each print
 - `keep_alive_duration_seconds`: When `keep_alive_mode` is `timed`, how long (in seconds) to stay awake after each print (e.g. `7200` for 2 hours)
 - `ipp_port`: The IPP port used to query printer status (default `631`)
+
+### Fonts
+
+Text is rendered server-side with the typefaces installed in the container. The
+image bundles two families' worth:
+
+| Family | Styles | Notes |
+|---|---|---|
+| DejaVu Sans / Serif / Sans Mono | regular, bold, italic, bold italic | The default. `DejaVu Sans` + `bold` is what this app used before fonts were selectable, so existing labels are unchanged. |
+| Liberation Sans / Serif / Mono | regular, bold, italic, bold italic | Metric-compatible with Arial, Times New Roman and Courier New. |
+
+`GET /api/v1/fonts` lists what is actually available, grouped into families with
+the styles each one provides:
+
+```json
+{
+  "fonts": [
+    { "family": "Liberation Mono", "styles": ["regular", "bold", "italic", "bold_italic"], "user_supplied": false }
+  ],
+  "default_family": "DejaVu Sans",
+  "user_font_dir": "/app/data/fonts"
+}
+```
+
+#### Adding your own
+
+Copy a `.ttf`, `.otf` or `.ttc` into **`/app/data/fonts`** — `./data/fonts` on
+the host with the stock `docker-compose.yml`. It shows up in the picker within a
+few seconds; no restart and no image rebuild. The directory is created on
+startup if it is missing, and is scanned recursively.
+
+```bash
+cp Inter-SemiBold.ttf ./data/fonts/
+```
+
+A face dropped in there **shadows a bundled one of the same name**, so you can
+substitute your own cut of a family. Set `FONTS_DIR` to scan somewhere else.
+
+Family names come from the font's own name table rather than its filename, which
+is what keeps `DejaVuSans.ttf` and `DejaVuSansCondensed.ttf` as two separate
+entries instead of one overwriting the other.
+
+#### Choosing a font per label
+
+Every compose form has a typeface and style pair, and the API takes them
+alongside the existing size options:
+
+```jsonc
+// POST /api/v1/text/print
+{ "text": "Widget XYZ", "settings": { "font_family": "Liberation Mono", "font_style": "bold" } }
+
+// POST /api/v1/qrcode/print — the caption has its own font
+{ "qr": { "data": "..." },
+  "text": { "content": "Shelf B4", "font_family": "DejaVu Serif", "font_style": "italic" } }
+```
+
+Omit either field (or send an empty string) to inherit the saved default. An
+unknown family or a style the family lacks falls back to the closest available
+face rather than failing the print — a label in the wrong typeface beats no
+label at all.
 
 ### Multiple Printers
 

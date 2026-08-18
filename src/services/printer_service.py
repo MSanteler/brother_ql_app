@@ -34,6 +34,7 @@ except ImportError:
     logger.warning("pysnmp not available, SNMP-based keep-alive will not work")
 
 from src.services.settings_service import settings_service
+from src.services.font_service import font_service
 from src.services.ipp_client import get_printer_attributes
 from src.services.pdf_renderer import render_pdf, parse_page_range
 from src.utils.exceptions import PrinterError, ImageProcessingError, ValidationError
@@ -341,18 +342,63 @@ class PrinterService:
         # Ensure upload folder exists
         os.makedirs(self.upload_folder, exist_ok=True)
         
-        # Font path for text rendering
-        self.font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        if not os.path.exists(self.font_path):
-            # Try to find a suitable font on the system
+        # Fallback font for text rendering, used when a request names no font
+        # and the catalog is empty. The catalog itself already falls back to
+        # DejaVu Sans Bold -- the historical hardcoded face -- so this only ever
+        # comes into play if the image has no fonts installed at all.
+        self.font_path = font_service.resolve()
+        if not self.font_path:
+            logger.warning("No fonts found; text will render in Pillow's "
+                           "built-in bitmap font",
+                           user_font_dir=font_service.user_font_dir)
+
+    def _resolve_font_path(self, settings: Dict[str, Any],
+                           prefix: str = "") -> Optional[str]:
+        """
+        Pick the font file a render should use.
+
+        ``prefix`` selects the per-block keys used by the composite layouts,
+        which already namespace their text options this way ("text_font_size").
+        A prefixed key wins, then the unprefixed one, then the catalog default.
+
+        Args:
+            settings: The resolved print settings.
+            prefix: Key prefix, e.g. ``"text_"`` for QR/image side text.
+
+        Returns:
+            Path to a font file, or None when no font could be found at all.
+        """
+        family = settings.get(f"{prefix}font_family") or settings.get("font_family")
+        style = settings.get(f"{prefix}font_style") or settings.get("font_style")
+        return font_service.resolve(family, style) or self.font_path
+
+    @staticmethod
+    def _font_at(font_path: Optional[str], size: int) -> "ImageFont.FreeTypeFont":
+        """
+        Load *font_path* at *size*, degrading to Pillow's built-in font.
+
+        Text rendering is the whole point of most of this app, so a font that
+        has gone missing between the catalog scan and the render must not take
+        the print down with it -- the label comes out in the default face
+        instead, with the reason logged.
+        """
+        if font_path:
             try:
-                import matplotlib.font_manager as fm
-                self.font_path = fm.findfont(fm.FontProperties(family='DejaVu Sans'))
-                logger.info("Using font", font_path=self.font_path)
-            except ImportError:
-                logger.warning("Matplotlib not available, using default font")
-                self.font_path = None
-    
+                return ImageFont.truetype(font_path, size)
+            except (OSError, ValueError) as e:
+                logger.warning("Could not load font, falling back to default",
+                               font_path=font_path, error=str(e))
+        try:
+            return ImageFont.load_default(size=size)
+        except TypeError:
+            # Pillow < 10.1 has no size argument on load_default.
+            return ImageFont.load_default()
+
+    def _load_font(self, settings: Dict[str, Any], size: int,
+                   prefix: str = "") -> "ImageFont.FreeTypeFont":
+        """Resolve and load in one step, for the single-size render paths."""
+        return self._font_at(self._resolve_font_path(settings, prefix), size)
+
     def _cleanup_temp_files(self, paths: List[str]) -> None:
         """
         Remove intermediate render/resize artifacts produced by this service
@@ -750,7 +796,7 @@ class PrinterService:
             text_alignment = settings.get("text_alignment", "left")
             image_position = settings.get("image_position", "right")
             text_font_size = int(settings.get("text_font_size", settings.get("font_size", 30)))
-            font = ImageFont.truetype(self.font_path, text_font_size)
+            font = self._load_font(settings, text_font_size, prefix="text_")
 
             # Layout geometry: the roll's printable width, image 1/3, text 2/3.
             width = get_label_width(settings.get("label_size"))
@@ -1391,7 +1437,10 @@ class PrinterService:
             text_area = width - 20  # 10 px margin on either side
 
             wrap = settings.get("text_wrap", True)
-            font = ImageFont.truetype(self.font_path, font_size)
+            # Resolved once: the fit loop below reloads the face at a dozen
+            # sizes, and re-running catalog lookup for each is pure overhead.
+            font_path = self._resolve_font_path(settings)
+            font = self._font_at(font_path, font_size)
 
             def wrap_all(current_font):
                 # Auto-wrap long lines to the label width (default on) so text is
@@ -1424,7 +1473,7 @@ class PrinterService:
             if font_size != requested_font_size:
                 # Only `custom` changes the size here; re-render at the scaled
                 # size before any fitting logic looks at it.
-                font = ImageFont.truetype(self.font_path, font_size)
+                font = self._font_at(font_path, font_size)
                 wrapped = wrap_all(font)
 
             if scale_mode == "fit" and wrap:
@@ -1436,7 +1485,7 @@ class PrinterService:
                         if 20 + len(wrapped) * (ascent + descent) <= label_height:
                             break
                         font_size -= 2
-                        font = ImageFont.truetype(self.font_path, font_size)
+                        font = self._font_at(font_path, font_size)
                         wrapped = wrap_all(font)
                 else:
                     # Continuous tape grows downwards, so height is never the
@@ -1447,7 +1496,7 @@ class PrinterService:
                     while (font_size > MIN_AUTO_FIT_FONT_SIZE
                            and self._widest_word(lines, font) > text_area):
                         font_size -= 2
-                        font = ImageFont.truetype(self.font_path, font_size)
+                        font = self._font_at(font_path, font_size)
                     wrapped = wrap_all(font)
 
             lines = wrapped
@@ -2100,7 +2149,7 @@ class PrinterService:
 
         # Use text_font_size if provided, otherwise fall back to font_size or default
         text_font_size = settings.get("text_font_size", settings.get("font_size", 30))
-        font = ImageFont.truetype(self.font_path, text_font_size)
+        font = self._load_font(settings, text_font_size, prefix="text_")
 
         # Fix the label to the loaded roll's printable width, split into a text
         # column (2/3) and a QR column (1/3), then wrap the text to its column
@@ -2187,7 +2236,7 @@ class PrinterService:
         # Create a new image with space for text
         # Use text_font_size if provided, otherwise fall back to font_size or default
         text_font_size = settings.get("text_font_size", settings.get("font_size", 30))
-        font = ImageFont.truetype(self.font_path, text_font_size)
+        font = self._load_font(settings, text_font_size, prefix="text_")
 
         # Wrap the caption to the QR width (default on) so long captions are
         # never truncated; disable with settings.text_wrap = false.

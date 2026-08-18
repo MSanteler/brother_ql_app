@@ -8,6 +8,7 @@ from typing import Dict, Any
 from src.services.printer_service import printer_service
 from src.services.queue_service import print_queue
 from src.services.settings_service import settings_service
+from src.services.font_service import apply_text_font
 from src.utils.exceptions import ValidationError, PrinterError, ConfirmationRequiredError
 from src.utils.print_guard import guard_and_dispatch
 from src.utils.dry_run import is_dry_run, build_dry_run_response
@@ -63,6 +64,7 @@ def print_text_qrcode_label(body: Dict[str, Any]) -> Dict[str, Any]:
         combined_settings["text_alignment"] = text_alignment
         combined_settings["text_font_size"] = text_font_size
         combined_settings["text_wrap"] = text_settings.get("wrap", True)
+        apply_text_font(combined_settings, text_settings)
 
         # Add QR code settings
         if qr_settings:

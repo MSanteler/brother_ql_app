@@ -145,6 +145,10 @@ function updateTextPreview() {
             previewText.innerHTML = formattedText;
             previewText.style.fontSize = `${fontSize}px`;
             previewText.style.textAlign = alignment;
+            // Draw the draft in the face the printer will use, so switching
+            // typeface visibly changes the preview rather than only the print.
+            const textFont = readFontChoice('text-font-family', 'text-font-style');
+            applyPreviewFont(previewText, textFont.family, textFont.style);
             previewText.classList.remove('d-none');
             
             // Hide placeholder and other previews
@@ -220,6 +224,8 @@ function updateQRCodePreview() {
                 textElement.textContent = textContent;
                 textElement.style.fontSize = `${textFontSize}px`;
                 textElement.style.textAlign = textAlignment || 'center';
+                const qrFont = readFontChoice('qr-text-font-family', 'qr-text-font-style');
+                applyPreviewFont(textElement, qrFont.family, qrFont.style);
                 
                 if (textPosition === 'top') {
                     previewQrcode.appendChild(textElement);
@@ -295,6 +301,8 @@ function updateLabelPreview() {
             textDiv.className = 'label-text';
             textDiv.style.fontSize = `${textFontSize}px`;
             textDiv.style.textAlign = textAlignment;
+            const labelFont = readFontChoice('label-text-font-family', 'label-text-font-style');
+            applyPreviewFont(textDiv, labelFont.family, labelFont.style);
             // Format text with HTML to handle line breaks
             const formattedText = textContent
                 .replace(/\n/g, '<br>')
