@@ -362,3 +362,111 @@ def test_session_info_does_not_trust_the_raw_cookie():
     assert "current_user()" in src
     # the cookie parameter must not be inspected for identity
     assert "cookie ==" not in src and "cookie)" not in src.split('"""')[-1]
+
+
+# --------------------------------------------------------------------------
+# Where sign-in lands: back in the app, unless it started in the frame
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def oidc_client(monkeypatch):
+    """A Flask app with the real routes and gate, and a fake token endpoint."""
+    from flask import Flask
+
+    _configure()
+    app = Flask(__name__)
+    app.config["SECRET_KEY"] = "test-only"
+    assert oidc.register_oidc(app) is True
+    # The gate's cookie is Secure; the test client only sends it over https.
+    app.config["SESSION_COOKIE_SECURE"] = False
+
+    @app.route("/")
+    def index():
+        return "the app"
+
+    @app.route("/settings")
+    def settings():
+        return "settings"
+
+    def fake_post(url, data=None, timeout=None):
+        claims = {"preferred_username": "ms", "nonce": fake_post.nonce}
+        body = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+
+        class R:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {"id_token": f"h.{body}.s"}
+        return R()
+
+    monkeypatch.setattr(oidc.requests, "post", fake_post)
+    client = app.test_client()
+    client.fake_post = fake_post
+    return client
+
+
+def _sign_in(client, login_url):
+    """Follow /auth/login to the IdP and back, returning the callback response."""
+    from urllib.parse import parse_qs, urlparse
+
+    r = client.get(login_url)
+    assert r.status_code == 302
+    q = parse_qs(urlparse(r.headers["Location"]).query)
+    client.fake_post.nonce = q["nonce"][0]
+    return client.get(f"/auth/callback?code=c&state={q['state'][0]}")
+
+
+def test_top_level_visit_redirects_straight_to_login(oidc_client):
+    """A browser tab should not be shown a button it has to click."""
+    r = oidc_client.get("/settings?tab=2", headers={"Sec-Fetch-Dest": "document"})
+    assert r.status_code == 302
+    assert r.headers["Location"] == "/auth/login?next=%2Fsettings%3Ftab%3D2"
+
+
+def test_framed_visit_gets_the_new_tab_button(oidc_client):
+    """Keycloak cannot render in a frame, so a redirect there would dead-end."""
+    r = oidc_client.get("/", headers={"Sec-Fetch-Dest": "iframe"})
+    assert r.status_code == 401
+    assert "/auth/login?popup=1" in r.get_data(as_text=True)
+    assert "target='_blank'" in r.get_data(as_text=True)
+
+
+def test_no_fetch_metadata_gets_the_button_not_a_redirect(oidc_client):
+    """Without the header we cannot tell framed from top-level; the page works for both."""
+    r = oidc_client.get("/")
+    assert r.status_code == 401
+
+
+def test_top_level_sign_in_returns_to_the_app(oidc_client):
+    """Regression: every sign-in used to end on 'you can close this tab'."""
+    r = _sign_in(oidc_client, "/auth/login?next=/settings")
+    assert r.status_code == 302
+    assert r.headers["Location"] == "/settings"
+    assert oidc_client.get("/settings").get_data(as_text=True) == "settings"
+
+
+def test_frame_new_tab_sign_in_ends_on_the_close_page(oidc_client):
+    r = _sign_in(oidc_client, "/auth/login?popup=1")
+    assert r.status_code == 200
+    assert "Signed in" in r.get_data(as_text=True)
+
+
+def test_external_next_is_not_followed(oidc_client):
+    """?next= must not turn sign-in into an open redirect."""
+    r = _sign_in(oidc_client, "/auth/login?next=https://evil.example/")
+    assert r.headers["Location"] == "/"
+
+
+@pytest.mark.parametrize("target,expected", [
+    ("/", "/"),
+    ("/settings?tab=2", "/settings?tab=2"),
+    (None, "/"),
+    ("", "/"),
+    ("https://evil.example", "/"),
+    ("//evil.example", "/"),
+    ("/\\evil.example", "/"),
+    ("javascript:alert(1)", "/"),
+])
+def test_safe_next(target, expected):
+    assert oidc._safe_next(target) == expected

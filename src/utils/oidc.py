@@ -19,17 +19,26 @@ its own. There is no annotation to change that.
 So the session cookie is ours, and it is set ``SameSite=None; Secure`` so it
 survives framing.
 
-Why there is no auto-redirect
------------------------------
+Framed vs top-level
+-------------------
 A framed app cannot send the user to Keycloak by itself: Keycloak defends its
 login page with ``frame-ancestors 'self'`` and ``X-Frame-Options: SAMEORIGIN``,
 so the login page cannot render in the frame at all. Relaxing that on the
 identity provider is not worth doing.
 
-Instead an unauthenticated request to the UI gets a small page with a sign-in
-button that opens Keycloak in a real tab (``target="_blank"``). After that the
-session cookie exists and the frame works normally. API requests get a 401
-rather than the page, so machine callers see an error instead of HTML.
+So the two cases are handled differently, told apart by the browser's
+``Sec-Fetch-Dest`` header (``document`` for a top-level navigation, ``iframe``
+inside the dashboard):
+
+* **Top-level** -- an ordinary redirect to Keycloak, then back to the page that
+  was asked for. Nothing to click.
+* **Framed** -- a small page with a sign-in button that opens Keycloak in a real
+  tab (``target="_blank"``) with ``popup=1``. That tab ends on a "signed in, you
+  can close this" page, since there is nothing in it to go back to, and the
+  frame reloads itself once the session exists.
+
+API requests get a 401 rather than either, so machine callers see an error
+instead of HTML.
 """
 
 import os
@@ -52,6 +61,10 @@ _SESSION_EXPIRES = "oidc_expires_at"
 _SESSION_STATE = "oidc_state"
 _SESSION_NONCE = "oidc_nonce"
 _SESSION_VERIFIER = "oidc_code_verifier"
+# Where to send the browser after sign-in, and whether it signed in from the
+# frame's new tab (in which case there is nowhere to send it).
+_SESSION_NEXT = "oidc_next"
+_SESSION_POPUP = "oidc_popup"
 
 
 def oidc_enabled():
@@ -123,8 +136,32 @@ def current_user():
 
 def _clear_session():
     for key in (_SESSION_USER, _SESSION_EXPIRES, _SESSION_STATE, _SESSION_NONCE,
-                _SESSION_VERIFIER):
+                _SESSION_VERIFIER, _SESSION_NEXT, _SESSION_POPUP):
         session.pop(key, None)
+
+
+def _safe_next(target):
+    """``target`` if it is a path on this site, else "/".
+
+    The post-login redirect comes from a query parameter, so without this it is
+    an open redirect: ``?next=https://evil.example`` would bounce a freshly
+    signed-in user anywhere. ``//host`` and ``/\\host`` are protocol-relative
+    to browsers and just as external.
+    """
+    if (not target or not target.startswith("/") or target.startswith("//")
+            or target.startswith("/\\")):
+        return "/"
+    return target
+
+
+def _is_top_level_navigation():
+    """Whether this request is the browser loading a page in a tab.
+
+    False for a framed load (``iframe``), for fetch/XHR, and when the header is
+    absent (old browsers, curl) -- those keep the click-through page, which
+    works everywhere, rather than a redirect that would dead-end in a frame.
+    """
+    return request.headers.get("Sec-Fetch-Dest") == "document"
 
 
 def _pkce_pair():
@@ -207,6 +244,8 @@ def _register_routes(app, conf):
         session[_SESSION_STATE] = state
         session[_SESSION_NONCE] = nonce
         session[_SESSION_VERIFIER] = verifier
+        session[_SESSION_POPUP] = request.args.get("popup") == "1"
+        session[_SESSION_NEXT] = _safe_next(request.args.get("next"))
 
         params = {
             "client_id": conf["client_id"],
@@ -280,9 +319,13 @@ def _register_routes(app, conf):
         session.permanent = False
         logger.info("OIDC sign-in", user=user)
 
-        # Opened in a new tab from the frame's sign-in button, so there is
-        # nothing useful to go back to: tell the user to return to the frame.
-        return _signed_in_page(user)
+        # From the frame's new tab there is nothing useful to go back to, so
+        # tell the user to return to the frame (which reloads on its own).
+        # Otherwise this was an ordinary top-level sign-in: back to the app.
+        next_path = _safe_next(session.pop(_SESSION_NEXT, None))
+        if session.pop(_SESSION_POPUP, False):
+            return _signed_in_page(user)
+        return redirect(next_path)
 
     @app.route("/auth/logout")
     def oidc_logout():
@@ -350,6 +393,8 @@ def _register_gate(app):
         # Machine callers get a machine answer; browsers get somewhere to click.
         if path.startswith("/api/"):
             return jsonify({"error": "unauthorized", "login": "/auth/login"}), 401
+        if _is_top_level_navigation():
+            return redirect("/auth/login?" + urlencode({"next": request.full_path.rstrip("?")}))
         return _signin_page(), 401
 
 
@@ -375,12 +420,29 @@ def _signin_page(message=None):
     note = f"<p>{message}</p>" if message else ""
     # target=_blank is load-bearing: Keycloak's login page sends
     # frame-ancestors 'self', so it cannot render inside the dashboard frame.
+    #
+    # The script covers two things. Outside a frame (e.g. this page shown after
+    # a failed sign-in, or a browser that sends no Sec-Fetch-Dest) the button
+    # signs in in this same tab and comes back. Inside one, it polls whoami and
+    # reloads once the new tab has signed in, so nobody has to refresh by hand.
     return _page(
         "<h2>Label printer</h2>"
         f"{note}"
-        "<p><a class=btn href='/auth/login' target='_blank' rel='noopener'>"
-        "Sign in with Keycloak</a></p>"
-        "<p>Opens in a new tab. Come back here and refresh once signed in.</p>"
+        "<p><a id=signin class=btn href='/auth/login?popup=1' target='_blank' "
+        "rel='noopener'>Sign in with Keycloak</a></p>"
+        "<p id=hint>Opens in a new tab; this page reloads once you are signed in.</p>"
+        "<script>"
+        "if(window.top===window.self){"
+        "var a=document.getElementById('signin');"
+        "a.href='/auth/login?next='+encodeURIComponent("
+        "location.pathname.indexOf('/auth/')===0?'/':location.pathname+location.search);"
+        "a.removeAttribute('target');document.getElementById('hint').remove();"
+        "}else{"
+        "setInterval(function(){fetch('/auth/whoami',{credentials:'include'})"
+        ".then(function(r){return r.json()}).then(function(d){"
+        "if(d.authenticated)location.reload()}).catch(function(){})},2000);"
+        "}"
+        "</script>"
     )
 
 
@@ -388,5 +450,5 @@ def _signed_in_page(user):
     return _page(
         "<h2>Signed in</h2>"
         f"<p>as {user}</p>"
-        "<p>You can close this tab and refresh the label printer.</p>"
+        "<p>You can close this tab; the label printer will pick it up.</p>"
     )
