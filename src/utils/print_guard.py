@@ -206,8 +206,9 @@ def enforce_media_match(settings) -> None:
     guard exists to prevent. Every mismatch class is either a silent discard or
     a ``convert()`` rejection; none of them print.
 
-    Only applies to USB printers, which can be asked what media they hold.
-    Network printers report through IPP and are left alone. Anything
+    Only applies to printers that can be asked what media they hold: USB, and
+    a USB printer behind a byte relay when PRINTER_STATUS_OVER_TCP is set.
+    Other network printers report through IPP and are left alone. Anything
     inconclusive (printer asleep, status unreadable, unknown label) is allowed
     through: this guard exists to catch a definite mismatch, not to add a new
     way for printing to fail.
@@ -227,12 +228,13 @@ def enforce_media_match(settings) -> None:
     # USB stack, and this module is imported by every print controller.
     from src.services.printer_service import (
         describe_media_mismatch,
-        read_usb_printer_status,
+        read_printer_media_status,
     )
 
-    status = read_usb_printer_status(settings.get("printer_uri"))
+    status = read_printer_media_status(settings.get("printer_uri"))
     if not status:
-        # Asleep, unreadable, or not a USB printer -- nothing conclusive.
+        # Asleep, unreadable, or a printer with no status channel -- nothing
+        # conclusive.
         return
 
     mismatch = describe_media_mismatch(settings.get("label_size"), status)

@@ -190,6 +190,112 @@ def _read_usb_printer_status_once(printer_uri: str, timeout_ms: int = 5000):
             pass
 
 
+# The preamble every status request sends: invalidate, initialise, then ask.
+# Identical to the USB path above, and to what brother_ql sends ahead of a job.
+STATUS_REQUEST = b"\x00" * 200 + b"\x1b\x40" + b"\x1b\x69\x53"
+# JetDirect's port, which is what brother_ql assumes when a tcp:// URI has none.
+DEFAULT_RAW_PORT = 9100
+
+
+def tcp_status_enabled() -> bool:
+    """Whether tcp:// printers are asked for status over their data port.
+
+    Opt-in via ``PRINTER_STATUS_OVER_TCP``, because it only works when the far
+    end passes the printer's replies back: a USB QL behind a byte relay (a Pi or
+    microcontroller pumping 9100 <-> the USB bulk endpoints) does, while the
+    network board in a QL-8xxNW generally does not, and those report through
+    IPP instead. Unset, network printers behave exactly as before.
+
+    Read from the environment on every call, like ``API_KEY``.
+    """
+    return str(os.environ.get("PRINTER_STATUS_OVER_TCP", "")).strip().lower() in (
+        "true", "yes", "1")
+
+
+def _split_tcp_uri(printer_uri: str):
+    """(host, port) of a tcp:// URI, or (None, None) when it is not one."""
+    match = re.match(r"tcp://([^:/]+)(?::(\d+))?/?$", (printer_uri or "").strip())
+    if not match:
+        return None, None
+    return match.group(1), int(match.group(2) or DEFAULT_RAW_PORT)
+
+
+def read_tcp_printer_status(printer_uri: str, timeout: float = 3.0,
+                            _retries: int = 2, _retry_delay: float = 0.25):
+    """Ask a QL behind a byte relay what media is loaded.
+
+    Same request and the same 32-byte answer as :func:`read_usb_printer_status`,
+    just carried over the socket a print job would use. Only meaningful when
+    :func:`tcp_status_enabled`; see there for why.
+
+    Returns ``(reachable, status)``. The two are separate because through a
+    relay "the port answers" and "the printer answers" are different facts: a
+    relay with the printer switched off accepts the connection and then closes
+    it without a reply. ``status`` is the decoded dict, or None.
+    """
+    reachable = False
+    for attempt in range(max(1, _retries)):
+        result = _read_tcp_printer_status_once(printer_uri, timeout)
+        if isinstance(result, dict):
+            return True, result
+        reachable = reachable or result
+        if attempt < _retries - 1:
+            time.sleep(_retry_delay)
+    return reachable, None
+
+
+def _read_tcp_printer_status_once(printer_uri: str, timeout: float):
+    """Single attempt: the decoded status dict, or whether the port answered."""
+    host, port = _split_tcp_uri(printer_uri)
+    if host is None:
+        return False
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+    except OSError as e:
+        logger.info("Printer relay not reachable", printer_uri=printer_uri,
+                    error=str(e))
+        return False
+    try:
+        sock.sendall(STATUS_REQUEST)
+        raw = b""
+        deadline = time.monotonic() + timeout
+        while len(raw) < STATUS_PACKET_BYTES:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            sock.settimeout(remaining)
+            chunk = sock.recv(STATUS_PACKET_BYTES - len(raw))
+            if not chunk:
+                # The relay hung up without an answer: printer off, asleep or
+                # in Editor Lite mode, none of which this end can tell apart.
+                break
+            raw += chunk
+        if len(raw) < STATUS_PACKET_BYTES:
+            return True
+        return interpret_response(raw)
+    except Exception as e:
+        # OSError from the socket, or brother_ql's NameError for a reply that
+        # is not a status packet. Either way: reachable, but no answer.
+        logger.warning("Could not read printer status over TCP",
+                       printer_uri=printer_uri, error=str(e))
+        return True
+    finally:
+        sock.close()
+
+
+def read_printer_media_status(printer_uri: str):
+    """The printer's own report of its media, from whichever channel has one.
+
+    USB printers are asked directly; tcp:// printers only when
+    :func:`tcp_status_enabled`. Returns the decoded dict, or None when there is
+    no conclusive answer -- which the media guards treat as "allow", so an
+    unreadable printer never becomes a new way for printing to fail.
+    """
+    if tcp_status_enabled() and _split_tcp_uri(printer_uri)[0] is not None:
+        return read_tcp_printer_status(printer_uri)[1]
+    return read_usb_printer_status(printer_uri)
+
+
 # Cap for the unbounded direction when laying text out lengthwise along
 # continuous tape (rotate_mode="layout"). Long enough for any real label -- 8x a
 # 50mm tape width is ~40cm -- while still forcing a wrap eventually rather than
@@ -471,6 +577,26 @@ class PrinterService:
             "backend": backend_type,
         }
 
+        # A USB printer behind a byte relay: ask it over the data port, the same
+        # way the USB branch below does, instead of probing for an IPP server
+        # the relay does not have.
+        if backend_type == "network" and tcp_status_enabled():
+            reachable, live = read_tcp_printer_status(printer_uri)
+            if live:
+                return self._status_from_reading(live, details, "tcp-status")
+            details["source"] = "tcp-status"
+            if reachable:
+                return {
+                    "available": False,
+                    "status": "Printer not answering -- is it switched on?",
+                    "details": details,
+                }
+            return {
+                "available": False,
+                "status": "Printer not reachable",
+                "details": details,
+            }
+
         # Network printers: query the real device state via IPP (TCP 631).
         # This works on Brother QL models where SNMP is disabled and the raw
         # 9100 port offers no status read-back. A plain TCP connect is used as
@@ -520,51 +646,7 @@ class PrinterService:
             # mismatched job is discarded without a word.
             live = read_usb_printer_status(printer_uri)
             if live:
-                loaded_width = live.get("media_width")
-                loaded_length = live.get("media_length")
-                errors = live.get("errors") or []
-                details.update({
-                    "source": "usb-status",
-                    "media_type": live.get("media_type"),
-                    "media_width_mm": loaded_width,
-                    "media_length_mm": loaded_length,
-                    "phase": live.get("phase_type"),
-                    "errors": errors,
-                })
-
-                # Which label identifiers can actually print on what is loaded,
-                # so a UI can flag a mismatched selection instead of letting the
-                # job disappear.
-                try:
-                    from brother_ql.labels import ALL_LABELS
-                    details["loadable_label_sizes"] = [
-                        l.identifier for l in ALL_LABELS
-                        if l.tape_size[0] == loaded_width
-                        and bool(l.tape_size[1]) == bool(loaded_length)
-                        and (not loaded_length or l.tape_size[1] == loaded_length)
-                    ]
-                except Exception:
-                    pass
-
-                if errors:
-                    return {
-                        "available": False,
-                        "status": "Printer reports: " + ", ".join(errors),
-                        "details": details,
-                    }
-                if not loaded_width:
-                    return {
-                        "available": False,
-                        "status": "No media detected",
-                        "details": details,
-                    }
-                kind = ("continuous" if not loaded_length
-                        else f"x{loaded_length}mm die-cut")
-                return {
-                    "available": True,
-                    "status": f"Ready -- {loaded_width}mm {kind} loaded",
-                    "details": details,
-                }
+                return self._status_from_reading(live, details, "usb-status")
 
             return {
                 "available": True,
@@ -584,6 +666,55 @@ class PrinterService:
                 "details": details,
             }
     
+    @staticmethod
+    def _status_from_reading(live: Dict[str, Any], details: Dict[str, Any],
+                             source: str) -> Dict[str, Any]:
+        """A status response built from the printer's own 32-byte report."""
+        loaded_width = live.get("media_width")
+        loaded_length = live.get("media_length")
+        errors = live.get("errors") or []
+        details.update({
+            "source": source,
+            "media_type": live.get("media_type"),
+            "media_width_mm": loaded_width,
+            "media_length_mm": loaded_length,
+            "phase": live.get("phase_type"),
+            "errors": errors,
+        })
+
+        # Which label identifiers can actually print on what is loaded, so a UI
+        # can flag a mismatched selection instead of letting the job disappear.
+        try:
+            from brother_ql.labels import ALL_LABELS
+            details["loadable_label_sizes"] = [
+                l.identifier for l in ALL_LABELS
+                if l.tape_size[0] == loaded_width
+                and bool(l.tape_size[1]) == bool(loaded_length)
+                and (not loaded_length or l.tape_size[1] == loaded_length)
+            ]
+        except Exception:
+            pass
+
+        if errors:
+            return {
+                "available": False,
+                "status": "Printer reports: " + ", ".join(errors),
+                "details": details,
+            }
+        if not loaded_width:
+            return {
+                "available": False,
+                "status": "No media detected",
+                "details": details,
+            }
+        kind = ("continuous" if not loaded_length
+                else f"x{loaded_length}mm die-cut")
+        return {
+            "available": True,
+            "status": f"Ready -- {loaded_width}mm {kind} loaded",
+            "details": details,
+        }
+
     def print_text(self, text: str, settings: Dict[str, Any]) -> Dict[str, Any]:
         """
         Print text on a label.
@@ -1780,14 +1911,15 @@ class PrinterService:
             # log line saying the job was sent. Asking the printer what media it
             # has turns that into an explanation. This is a printer-state fault
             # rather than a caller mistake, hence PrinterError and not
-            # ValidationError. USB only -- network printers report through IPP.
-            usb_status = read_usb_printer_status(printer_uri)
-            if usb_status:
-                reported_errors = usb_status.get("errors") or []
+            # ValidationError. USB, or a relay with PRINTER_STATUS_OVER_TCP;
+            # other network printers report through IPP.
+            media_status = read_printer_media_status(printer_uri)
+            if media_status:
+                reported_errors = media_status.get("errors") or []
                 if reported_errors:
                     raise PrinterError(
                         "printer reports: " + ", ".join(reported_errors))
-                mismatch = describe_media_mismatch(label_size, usb_status)
+                mismatch = describe_media_mismatch(label_size, media_status)
                 if mismatch:
                     raise PrinterError(
                         f"{mismatch}. Load the matching roll, or choose a label "
