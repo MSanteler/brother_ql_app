@@ -413,7 +413,7 @@ def test_printer_status_has_exactly_one_poller():
     # letting it fetch again.
     assert "applyLoadedMedia(data)" in api
     # Only the shared reader may POST to the status endpoint.
-    assert api.count("'/api/v1/printers/status'") == 1
+    assert api.count("'api/v1/printers/status'") == 1
 
 
 def test_hold_button_is_offered_on_every_compose_form():

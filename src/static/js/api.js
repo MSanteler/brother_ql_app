@@ -167,7 +167,7 @@ async function throwPrintError(response) {
  */
 async function loadSettings() {
     try {
-        const response = await fetch('/api/v1/settings');
+        const response = await fetch('api/v1/settings');
         if (!response.ok) {
             throw new Error(`Failed to load settings: ${response.status}`);
         }
@@ -281,7 +281,7 @@ function updateKeepAliveModeUI() {
  */
 async function loadKeepAliveStatus() {
     try {
-        const response = await fetch('/api/v1/printers/keep-alive');
+        const response = await fetch('api/v1/printers/keep-alive');
         if (!response.ok) {
             throw new Error(`Failed to load keep alive status: ${response.status}`);
         }
@@ -555,7 +555,7 @@ async function handleTextPrint(event) {
         window.saveHeldOnly = false;
         withAmend(requestBody, keepHeld);
 
-        const response = await fetch('/api/v1/text/print', {
+        const response = await fetch('api/v1/text/print', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -659,7 +659,7 @@ async function handleImagePrint(event) {
         const keepHeld = window.saveHeldOnly === true;
         window.saveHeldOnly = false;
         appendAmend(formData, keepHeld);
-        const response = await fetch('/api/v1/image/print', {
+        const response = await fetch('api/v1/image/print', {
             method: 'POST',
             body: formData
         });
@@ -751,7 +751,7 @@ async function handlePdfPrint(event) {
         const keepHeld = window.saveHeldOnly === true;
         window.saveHeldOnly = false;
         appendAmend(formData, keepHeld);
-        const response = await fetch('/api/v1/pdf/print', {
+        const response = await fetch('api/v1/pdf/print', {
             method: 'POST',
             body: formData
         });
@@ -859,7 +859,7 @@ async function previewPdf() {
         formData.append('file', pdfInput.files[0]);
         formData.append('pages', pages || '');
 
-        const response = await fetch('/api/v1/pdf/preview', {
+        const response = await fetch('api/v1/pdf/preview', {
             method: 'POST',
             body: formData,
             signal: controller.signal
@@ -1032,7 +1032,7 @@ async function handleQRCodePrint(event) {
         const keepHeld = window.saveHeldOnly === true;
         window.saveHeldOnly = false;
         withAmend(requestBody, keepHeld);
-        const response = await fetch('/api/v1/qrcode/print', {
+        const response = await fetch('api/v1/qrcode/print', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1149,7 +1149,7 @@ async function handleLabelPrint(event) {
         const keepHeld = window.saveHeldOnly === true;
         window.saveHeldOnly = false;
         withAmend(requestBody, keepHeld);
-        const response = await fetch('/api/v1/label/text-qrcode', {
+        const response = await fetch('api/v1/label/text-qrcode', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1254,7 +1254,7 @@ async function handleTextImagePrint(event) {
         const keepHeld = window.saveHeldOnly === true;
         window.saveHeldOnly = false;
         appendAmend(formData, keepHeld);
-        const response = await fetch('/api/v1/label/text-image', {
+        const response = await fetch('api/v1/label/text-image', {
             method: 'POST',
             body: formData
         });
@@ -1328,7 +1328,7 @@ async function handleSaveSettings(event) {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Saving...';
         
-        const response = await fetch('/api/v1/settings', {
+        const response = await fetch('api/v1/settings', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -1420,7 +1420,7 @@ async function initCanvaTab() {
 
     let status;
     try {
-        const response = await fetch('/api/v1/canva/status');
+        const response = await fetch('api/v1/canva/status');
         status = response.ok ? await response.json() : null;
     } catch (error) {
         status = null;
@@ -1466,7 +1466,7 @@ async function loadCanvaFolders() {
     if (!select) return;
 
     try {
-        const response = await fetch('/api/v1/canva/folders');
+        const response = await fetch('api/v1/canva/folders');
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             showCanvaNotice(body.message || 'Could not list Canva folders.');
@@ -1518,7 +1518,7 @@ async function loadCanvaDesigns() {
 
     try {
         const response = await fetch(
-            `/api/v1/canva/designs?folder_id=${encodeURIComponent(folderId)}`);
+            `api/v1/canva/designs?folder_id=${encodeURIComponent(folderId)}`);
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             grid.innerHTML = '';
@@ -1591,7 +1591,7 @@ async function printCanvaDesign(designId) {
     if (card) card.classList.add('is-busy');
 
     try {
-        const response = await fetch('/api/v1/canva/print', {
+        const response = await fetch('api/v1/canva/print', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1633,7 +1633,7 @@ async function openCanvaDesign(designId) {
     if (card) card.classList.add('is-busy');
 
     try {
-        const response = await fetch('/api/v1/canva/export', {
+        const response = await fetch('api/v1/canva/export', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1803,7 +1803,7 @@ async function fetchPrinterStatus(opts = {}) {
 
     printerStatusInFlight = (async () => {
         try {
-            const response = await fetch('/api/v1/printers/status', {
+            const response = await fetch('api/v1/printers/status', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2338,7 +2338,7 @@ function buildPreviewRequest(mode) {
         if (!text.trim()) return null;
         const textFont = readFontChoice('text-font-family', 'text-font-style');
         return {
-            url: '/api/v1/text/preview',
+            url: 'api/v1/text/preview',
             json: {
                 text: text,
                 settings: Object.assign({}, settings, {
@@ -2379,7 +2379,7 @@ function buildPreviewRequest(mode) {
                 alignment: document.getElementById('qr-text-alignment').value
             };
         }
-        return { url: '/api/v1/qrcode/preview', json: body };
+        return { url: 'api/v1/qrcode/preview', json: body };
     }
 
     if (mode === 'label') {
@@ -2388,7 +2388,7 @@ function buildPreviewRequest(mode) {
         if (!qrData.trim() || !textContent.trim()) return null;
         const labelTextFont = readFontChoice('label-text-font-family', 'label-text-font-style');
         return {
-            url: '/api/v1/label/preview',
+            url: 'api/v1/label/preview',
             json: {
                 qr: {
                     data: qrData,
@@ -2433,7 +2433,7 @@ function buildPreviewRequest(mode) {
             scale_mode: scaleEl ? scaleEl.value : 'actual',
             image_mode: imageMode.value
         })));
-        return { url: '/api/v1/image/preview', form: formData };
+        return { url: 'api/v1/image/preview', form: formData };
     }
 
     return null;
@@ -2513,7 +2513,7 @@ function requestServerPreview(mode) {
  */
 async function updateKeepAlive(enabled, interval) {
     try {
-        const response = await fetch('/api/v1/printers/keep-alive', {
+        const response = await fetch('api/v1/printers/keep-alive', {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json'
@@ -2711,7 +2711,7 @@ function renderJobs(jobs) {
  */
 async function refreshJobs() {
     try {
-        const response = await fetch('/api/v1/jobs');
+        const response = await fetch('api/v1/jobs');
         if (!response.ok) {
             throw new Error(`Failed to load jobs: ${response.status}`);
         }
@@ -2755,7 +2755,7 @@ function applyQueueState(state) {
  */
 async function refreshQueueState() {
     try {
-        const response = await fetch('/api/v1/jobs/queue');
+        const response = await fetch('api/v1/jobs/queue');
         if (!response.ok) {
             throw new Error(`Failed to load queue state: ${response.status}`);
         }
@@ -2775,7 +2775,7 @@ async function toggleQueuePause() {
     const paused = toggle && toggle.getAttribute('aria-pressed') === 'true';
     const endpoint = paused ? 'resume' : 'pause';
     try {
-        const response = await fetch(`/api/v1/jobs/${endpoint}`, { method: 'POST' });
+        const response = await fetch(`api/v1/jobs/${endpoint}`, { method: 'POST' });
         if (!response.ok) {
             throw new Error(`Error: ${response.status}`);
         }
@@ -2803,7 +2803,7 @@ async function stopQueue() {
     if (!confirmed) return;
 
     try {
-        const response = await fetch('/api/v1/jobs/stop', { method: 'POST' });
+        const response = await fetch('api/v1/jobs/stop', { method: 'POST' });
         if (!response.ok) {
             throw new Error(`Error: ${response.status}`);
         }
@@ -2832,7 +2832,7 @@ async function clearAllJobs() {
     if (!confirmed) return;
 
     try {
-        const response = await fetch('/api/v1/jobs/clear-all', { method: 'POST' });
+        const response = await fetch('api/v1/jobs/clear-all', { method: 'POST' });
         if (!response.ok) {
             throw new Error(`Error: ${response.status}`);
         }
@@ -2864,7 +2864,7 @@ async function deleteJob(jobId, status) {
     }
 
     try {
-        const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/delete`, {
+        const response = await fetch(`api/v1/jobs/${encodeURIComponent(jobId)}/delete`, {
             method: 'POST'
         });
         if (!response.ok) {
@@ -2888,7 +2888,7 @@ async function deleteJob(jobId, status) {
  */
 async function cancelJob(jobId) {
     try {
-        const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {
+        const response = await fetch(`api/v1/jobs/${encodeURIComponent(jobId)}/cancel`, {
             method: 'POST'
         });
         if (!response.ok) {
@@ -2964,7 +2964,7 @@ async function releaseJob(jobId) {
     if (!confirmed) return;
 
     try {
-        const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/release`, {
+        const response = await fetch(`api/v1/jobs/${encodeURIComponent(jobId)}/release`, {
             method: 'POST'
         });
         if (!response.ok) {
@@ -2995,7 +2995,7 @@ async function reprintJob(jobId) {
     if (!confirmed) return;
 
     try {
-        const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/reprint`, {
+        const response = await fetch(`api/v1/jobs/${encodeURIComponent(jobId)}/reprint`, {
             method: 'POST'
         });
         if (!response.ok) {
@@ -3117,7 +3117,7 @@ async function openJob(jobId) {
     // Fall back to a fresh fetch if the job (or its params) is not cached.
     if (!job || !job.params) {
         try {
-            const response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}`);
+            const response = await fetch(`api/v1/jobs/${encodeURIComponent(jobId)}`);
             if (response.ok) {
                 job = await response.json();
             }
@@ -3211,7 +3211,7 @@ async function loadJobFileIntoInput(jobId, inputId, fileName) {
 
     let response;
     try {
-        response = await fetch(`/api/v1/jobs/${encodeURIComponent(jobId)}/file`);
+        response = await fetch(`api/v1/jobs/${encodeURIComponent(jobId)}/file`);
     } catch (e) {
         showNotification('File no longer available (expired)', 'error');
         return false;
@@ -3239,7 +3239,7 @@ async function loadJobFileIntoInput(jobId, inputId, fileName) {
  */
 async function clearFinishedJobs() {
     try {
-        const response = await fetch('/api/v1/jobs/clear', { method: 'POST' });
+        const response = await fetch('api/v1/jobs/clear', { method: 'POST' });
         if (!response.ok) {
             throw new Error(`Error: ${response.status}`);
         }

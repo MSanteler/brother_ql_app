@@ -859,7 +859,7 @@ async function handleSharedFile() {
     }
 
     try {
-        const response = await fetch('/api/v1/share/' + encodeURIComponent(token));
+        const response = await fetch('api/v1/share/' + encodeURIComponent(token));
         if (!response.ok) {
             throw new Error(`Failed to load shared file: ${response.status}`);
         }

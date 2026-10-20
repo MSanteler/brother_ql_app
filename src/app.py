@@ -13,7 +13,9 @@ APP_VERSION = os.environ.get("APP_VERSION", "4.0.0-dev")
 
 from src.utils.error_handlers import register_error_handlers
 from src.utils.pillow_patch import apply_pillow_patch
-from src.utils.auth import auth_enabled, is_valid_api_key, API_KEY_HEADER
+from src.utils.auth import (auth_enabled, is_valid_api_key, API_KEY_HEADER,
+                            get_ingress_proxy, ingress_enabled,
+                            is_ingress_request)
 from src.utils.oidc import current_user, oidc_enabled, register_oidc
 from src.services.printer_service import printer_service
 from src.services.settings_service import settings_service
@@ -171,9 +173,20 @@ def create_app():
         else:
             schemes.pop('SessionAuth', None)
             logger.info("API-key authentication enforced on documented operations")
+        # A third alternative, for the same reason as SessionAuth: the UI served
+        # through Home Assistant ingress sends no key, and connexion would
+        # reject it before the before_request hook ever saw it.
+        if ingress_enabled():
+            schemes['IngressAuth']['x-apikeyInfoFunc'] = 'src.utils.auth.ingress_info'
+            spec['security'].append({'IngressAuth': []})
+            logger.info("Requests from the ingress proxy accepted",
+                        proxy=get_ingress_proxy())
+        else:
+            schemes.pop('IngressAuth', None)
     else:
         spec.pop('security', None)
         spec['components']['securitySchemes'].pop('SessionAuth', None)
+        spec['components']['securitySchemes'].pop('IngressAuth', None)
     connexion_app.add_api(spec,
                          validate_responses=True,
                          options={"swagger_ui": swagger_ui})
@@ -256,6 +269,11 @@ def register_auth(app):
         # makes to /api/v1/* came back 401 and the UI looked empty rather than
         # broken. Defer instead, and let the OIDC gate decide.
         if oidc_enabled() and current_user():
+            return None
+
+        # Home Assistant has already signed this person in; see
+        # src/utils/auth.py:is_ingress_request for why the address is the proof.
+        if is_ingress_request():
             return None
 
         return jsonify({"error": "unauthorized"}), 401

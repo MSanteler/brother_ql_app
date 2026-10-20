@@ -293,6 +293,8 @@ The following environment variables can be set (e.g. in `docker-compose.yml` or 
 - `UPLOAD_FOLDER`: Directory used to persist uploaded image/PDF files (job files and shared files). Defaults to an app-relative `uploads/` folder.
 - `JOB_FILE_TTL_SECONDS`: How long persisted image/PDF job files are kept so they can be reprinted or re-opened (default `86400`, i.e. 24 hours).
 - `SHARE_TTL_SECONDS`: How long files staged via the `/share` endpoint are kept before cleanup (default `3600`, i.e. 1 hour).
+- `PRINTER_STATUS_OVER_TCP`: Set to `true` when a `tcp://` printer is really a USB QL behind a byte relay (something that pumps port 9100 to and from the printer's USB endpoints). Status -- loaded media and error flags -- is then requested over the data port exactly as for USB, so the media guard keeps working. Leave unset for genuine network printers, which report through IPP.
+- `INGRESS_PROXY`: The address of a trusted reverse proxy that has already authenticated the user, e.g. `172.30.32.2` for a Home Assistant add-on with ingress. Requests whose TCP peer is that address need no API key; the `X-Ingress-Path` header alone is never trusted. The UI requests relative URLs, so it works below the proxy's path prefix.
 
 ## 📔 API Documentation
 

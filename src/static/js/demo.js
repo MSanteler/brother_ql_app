@@ -573,11 +573,9 @@
             method = (init && init.method) || 'GET';
         }
 
-        // Only intercept our API; everything else (fonts, CDN, ...) passes through.
-        if (url.indexOf('/api/v1/') === -1) {
-            return realFetch(input, init);
-        }
-
+        // Resolve first: the app requests relative URLs ("api/v1/...") so it can
+        // be served below a path prefix, and those only contain "/api/v1/" once
+        // resolved against the page.
         const pathname = (function () {
             try {
                 return new URL(url, location.href).pathname;
@@ -585,6 +583,11 @@
                 return url.split('?')[0];
             }
         })();
+
+        // Only intercept our API; everything else (fonts, CDN, ...) passes through.
+        if (pathname.indexOf('/api/v1/') === -1) {
+            return realFetch(input, init);
+        }
 
         const body = await parseBody(init, input instanceof Request ? input : null);
 
@@ -623,9 +626,9 @@
     }
 
     function fixApiDocsLink() {
-        // The footer "API Documentation" link points at /api/v1/ui/, which does
+        // The footer "API Documentation" link points at api/v1/ui/, which does
         // not exist on a static host. Repoint it at the project repository.
-        document.querySelectorAll('a[href="/api/v1/ui/"]').forEach(a => {
+        document.querySelectorAll('a[href="api/v1/ui/"]').forEach(a => {
             a.setAttribute('href', 'https://github.com/Dodoooh/brother_ql_app');
             a.setAttribute('title', 'Project on GitHub');
         });

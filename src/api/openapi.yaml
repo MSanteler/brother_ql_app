@@ -1425,6 +1425,16 @@ components:
         X-API-Key -- was rejected with "No auth provided" and the UI could not
         call its own API at all. Declaring both makes them alternatives:
         connexion tries each until one succeeds.
+    IngressAuth:
+      type: apiKey
+      in: header
+      name: X-Ingress-Path
+      description: >-
+        Requests forwarded by Home Assistant's ingress proxy, when
+        INGRESS_PROXY is set to its address. HA has already signed the person
+        in. The header only tells connexion where to look; the credential is
+        the connection coming from the proxy's own address, which a client
+        cannot forge by sending the header.
   schemas:
     JobStatus:
       type: object

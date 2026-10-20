@@ -13,6 +13,9 @@ import hmac
 # Header carrying the client-supplied API key.
 API_KEY_HEADER = "X-API-Key"
 
+# Header the Home Assistant ingress proxy adds to every request it forwards.
+INGRESS_PATH_HEADER = "X-Ingress-Path"
+
 
 def get_expected_api_key():
     """Return the configured API key, or ``None`` when auth is disabled.
@@ -56,6 +59,66 @@ def apikey_info(apikey, required_scopes=None):
     """
     if is_valid_api_key(apikey):
         return {"sub": "apikey"}
+    return None
+
+
+def get_ingress_proxy():
+    """The address of a trusted ingress proxy, or ``None`` when unset.
+
+    Set ``INGRESS_PROXY`` when the app runs as a Home Assistant add-on with
+    ingress. HA authenticates the person before proxying, and its Supervisor
+    always connects from one fixed address (172.30.32.2), so a request arriving
+    from there has already been signed in -- asking again would mean a second
+    login inside a panel that cannot show one.
+    """
+    proxy = (os.environ.get("INGRESS_PROXY") or "").strip()
+    return proxy or None
+
+
+def ingress_enabled():
+    """Whether requests from the ingress proxy are trusted."""
+    return get_ingress_proxy() is not None
+
+
+def is_ingress_request():
+    """Whether the current request came through the trusted ingress proxy.
+
+    Decided by the TCP peer address alone. The ``X-Ingress-Path`` header the
+    proxy adds is NOT evidence: any client can send it, while only the proxy
+    can connect from its own address. Nothing in front of the app rewrites
+    ``remote_addr`` unless OIDC is on, and OIDC's ProxyFix trusts only the
+    forwarded scheme, never the forwarded address.
+    """
+    proxy = get_ingress_proxy()
+    if proxy is None:
+        return False
+    from flask import request
+
+    return request.remote_addr == proxy
+
+
+def ingress_prefix():
+    """The path the ingress proxy serves this app under, or "".
+
+    Only for building redirects: a Location of ``/`` would leave the panel and
+    land on Home Assistant's own front page.
+    """
+    if not is_ingress_request():
+        return ""
+    from flask import request
+
+    return (request.headers.get(INGRESS_PATH_HEADER) or "").rstrip("/")
+
+
+def ingress_info(value, required_scopes=None):
+    """connexion callback for the IngressAuth scheme.
+
+    The scheme names the ``X-Ingress-Path`` header so connexion has something to
+    look for, but the header's value is not the credential -- the peer address
+    is (see ``is_ingress_request``).
+    """
+    if is_ingress_request():
+        return {"sub": "ingress"}
     return None
 
 

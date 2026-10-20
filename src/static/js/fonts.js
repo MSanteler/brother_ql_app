@@ -61,7 +61,7 @@ const loadedFontFaces = new Map();
  */
 async function loadFontCatalog() {
     try {
-        const response = await fetch('/api/v1/fonts');
+        const response = await fetch('api/v1/fonts');
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
@@ -274,7 +274,7 @@ function ensureFontFace(family, style) {
     }
 
     const cssName = previewFontName(family, effectiveStyle);
-    const url = `/api/v1/fonts/${encodeURIComponent(key)}/file`;
+    const url = `api/v1/fonts/${encodeURIComponent(key)}/file`;
 
     // Fetched by hand rather than handed to FontFace as a url() source.
     //

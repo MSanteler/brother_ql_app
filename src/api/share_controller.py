@@ -17,6 +17,7 @@ from typing import Optional
 from flask import request, current_app, redirect, send_from_directory, abort
 
 from src.services.printer_service import printer_service
+from src.utils.auth import ingress_prefix
 from src.utils.exceptions import ValidationError
 
 logger = structlog.get_logger()
@@ -72,7 +73,9 @@ def share():
 
     logger.info("Staged shared file", token=token, type=file_type)
 
-    return redirect(f"/?share={token}&type={file_type}", code=302)
+    # Under Home Assistant ingress the app lives below a prefix, and a bare
+    # "/" would land on HA's own front page instead.
+    return redirect(f"{ingress_prefix()}/?share={token}&type={file_type}", code=302)
 
 
 def get_shared(token: str):

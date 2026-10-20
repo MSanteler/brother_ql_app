@@ -370,7 +370,8 @@ _OIDC_EXEMPT_EXACT = ("/health", "/health/printer")
 
 def _register_gate(app):
     """Require a session for everything that is not exempt."""
-    from src.utils.auth import API_KEY_HEADER, auth_enabled, is_valid_api_key
+    from src.utils.auth import (API_KEY_HEADER, auth_enabled, is_ingress_request,
+                                is_valid_api_key)
 
     @app.before_request
     def require_oidc_session():
@@ -388,6 +389,10 @@ def _register_gate(app):
             return None
 
         if current_user():
+            return None
+
+        # Signed in by Home Assistant, if this came through its ingress proxy.
+        if is_ingress_request():
             return None
 
         # Machine callers get a machine answer; browsers get somewhere to click.
